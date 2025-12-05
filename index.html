@@ -1,0 +1,2336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Tienda - POS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.68/pdfmake.min.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.68/vfs_fonts.js'></script>
+
+
+    <style>
+        /* 1. CONFIGURACIÓN DEL CUERPO */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f3f4f6; 
+            min-height: 100vh; 
+        }
+        
+        /* 2. CONTROL DE SECCIONES (Pestañas) */
+        .section-content { 
+            display: none; 
+            animation: fadeIn 0.3s ease-in-out; 
+            min-height: 80vh; 
+        }
+        .section-content.active { 
+            display: flex; 
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Estilos para las tablas */
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th { background-color: #3b82f6; color: white; padding: 12px; text-align: left; }
+        td { padding: 12px; border-bottom: 1px solid #e5e7eb; }
+        
+        /* Filas de ventas clickeables */
+        #tabla-ventas tr { cursor: pointer; } 
+        #tabla-ventas tr:hover { background-color: #eef2ff; } 
+        
+        /* Estilos para los Modales */
+        .modal {
+            transition: opacity 0.3s ease-in-out;
+            pointer-events: none;
+            opacity: 0;
+            display: none; 
+        }
+        .modal.active {
+            pointer-events: auto;
+            opacity: 1;
+            display: flex; 
+        }
+
+        /* Botones de navegación */
+        .nav-btn.active { background-color: #2563eb; color: white; }
+
+        /* Estilo para la lista de sugerencias de búsqueda */
+        #sugerencias-lista {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            border-radius: 0 0 8px 8px;
+            z-index: 20; 
+        }
+        .sugerencia-item:hover {
+            background-color: #e5e7eb;
+            cursor: pointer;
+        }
+
+        /* Estilos de Venta Cancelada */
+        .venta-cancelada {
+            background-color: #fee2e2; /* Red-100 */
+            color: #b91c1c; /* Red-700 */
+        }
+        .venta-cancelada td {
+            text-decoration: line-through;
+        }
+        
+        /* Estilo para el botón de descarga de PDF */
+        @keyframes pulseRed {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .pulse-red {
+            animation: pulseRed 1.5s infinite;
+        }
+        
+        /* ESTILO PARA PRODUCTOS EN MERMA (FONDO ROJO EN INVENTARIO) */
+        .producto-merma {
+            background-color: #fef2f2; /* Red-50 */
+            border-left: 5px solid #ef4444; /* Red-500 */
+        }
+        .producto-merma td {
+            /* No cambiar el color del texto para no interferir con low-stock, solo el fondo */
+        }
+    </style>
+</head>
+<body class="flex flex-col">
+
+    <nav class="bg-white shadow-md p-4 flex justify-between items-center z-30 sticky top-0">
+        <div class="flex items-center gap-2">
+            <i class="fas fa-store text-blue-600 text-2xl"></i>
+            <h1 class="text-xl font-bold text-gray-800">Mi Tiendita</h1>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="showSection('inicio')" id="btn-inicio" class="nav-btn active px-4 py-2 rounded-lg font-medium text-gray-600 hover:bg-blue-100 transition">
+                <i class="fas fa-cash-register mr-2"></i>Caja
+            </button>
+            <button onclick="showSection('inventario')" id="btn-inventario" class="nav-btn px-4 py-2 rounded-lg font-medium text-gray-600 hover:bg-blue-100 transition">
+                <i class="fas fa-boxes mr-2"></i>Inventario
+            </button>
+            <button onclick="showSection('mermas')" id="btn-mermas" class="nav-btn px-4 py-2 rounded-lg font-medium text-gray-600 hover:bg-blue-100 transition">
+                <i class="fas fa-trash-restore mr-2"></i>Mermas
+            </button>
+            <button onclick="showSection('creditos')" id="btn-creditos" class="nav-btn px-4 py-2 rounded-lg font-medium text-gray-600 hover:bg-blue-100 transition">
+                <i class="fas fa-user-clock mr-2"></i>Créditos
+            </button>
+            <button onclick="showSection('ventas')" id="btn-ventas" class="nav-btn px-4 py-2 rounded-lg font-medium text-gray-600 hover:bg-blue-100 transition">
+                <i class="fas fa-receipt mr-2"></i>Ventas
+            </button>
+            <button onclick="showSection('gastos')" id="btn-gastos" class="nav-btn px-4 py-2 rounded-lg font-medium text-gray-600 hover:bg-blue-100 transition">
+                <i class="fas fa-hand-holding-usd mr-2"></i>Gastos
+            </button>
+            <button onclick="showSection('reportes')" id="btn-reportes" class="nav-btn px-4 py-2 rounded-lg font-medium text-gray-600 hover:bg-blue-100 transition">
+                <i class="fas fa-chart-bar mr-2"></i>Reportes
+            </button>
+            <button id="btn-bloquear" class="nav-btn px-4 py-2 rounded-lg font-medium text-red-600 bg-red-50 hover:bg-red-100 transition">
+                <i class="fas fa-lock mr-2"></i> Bloquear
+            </button>
+        </div>
+    </nav>
+
+    <main class="flex-1 p-6 flex flex-col">
+
+        <div id="inicio" class="section-content active flex-col">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                <div class="md:col-span-2 flex flex-col gap-4 relative">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 z-20">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Código o Nombre del Producto</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="input-codigo" placeholder="Ej: 001 o Pan. Usa 001x4 para 4 unidades." 
+                                class="flex-1 border-2 border-gray-300 rounded-lg p-3 text-xl focus:border-blue-500 focus:outline-none"
+                                oninput="mostrarSugerencias()"
+                                onkeypress="handleEnter(event)">
+                            <button onclick="agregarAlCarrito()" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-bold">
+                                <i class="fas fa-plus"></i> Agregar
+                            </button>
+                        </div>
+                        <div id="sugerencias-lista" class="absolute w-[65.5%] mt-1 bg-white shadow-xl rounded-b-lg border-t-0">
+                            </div>
+                        <p class="text-xs text-gray-500 mt-2">Presiona Enter para agregar el producto si está seleccionado.</p>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 overflow-hidden flex flex-col h-96">
+                        <div class="p-4 border-b bg-gray-50">
+                            <h2 class="font-bold text-gray-700">Productos en Caja</h2>
+                        </div>
+                        <div class="overflow-y-auto flex-1 p-0">
+                            <table class="w-full">
+                                <thead>
+                                    <tr>
+                                        <th class="bg-gray-100 text-gray-600 sticky top-0">Código</th>
+                                        <th class="bg-gray-100 text-gray-600 sticky top-0">Producto</th>
+                                        <th class="bg-gray-100 text-gray-600 sticky top-0">Precio</th>
+                                        <th class="bg-gray-100 text-gray-600 sticky top-0">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="lista-carrito">
+                                    </tbody>
+                            </table>
+                            <div id="empty-cart-msg" class="p-8 text-center text-gray-400">
+                                <i class="fas fa-shopping-basket text-4xl mb-2"></i>
+                                <p>El carrito está vacío</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="md:col-span-1">
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 flex flex-col justify-between h-full">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-800 mb-4">Resumen de Venta</h2>
+                            <div class="flex justify-between items-center mb-2 text-gray-600">
+                                <span>Artículos:</span>
+                                <span id="total-items" class="font-bold">0</span>
+                            </div>
+                            <div class="my-4 border-t border-gray-200"></div>
+                            <div class="flex justify-between items-center text-3xl font-bold text-green-600">
+                                <span>TOTAL:</span>
+                                <span id="total-pagar">$0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="mt-8 flex flex-col gap-3">
+                            <button onclick="realizarVenta()" class="w-full bg-green-500 text-white py-4 rounded-xl font-bold text-xl hover:bg-green-600 shadow-md transition transform hover:scale-105">
+                                <i class="fas fa-money-bill-wave mr-2"></i> Cobrar
+                            </button>
+                            <button onclick="realizarVentaCredito()" class="w-full bg-orange-500 text-white py-3 rounded-xl font-bold hover:bg-orange-600 transition shadow-md">
+                                <i class="fas fa-user-clock mr-2"></i> Agregar a Crédito (Fiado)
+                            </button>
+                            <button onclick="limpiarCarrito()" class="w-full bg-red-100 text-red-600 py-3 rounded-xl font-bold hover:bg-red-200 transition">
+                                <i class="fas fa-trash-alt mr-2"></i> Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="inventario" class="section-content flex-col">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1 flex flex-col">
+                <div class="flex justify-between items-end mb-4">
+                    <h2 class="text-2xl font-bold text-gray-800">Gestión de Inventario</h2>
+                    <div class="flex gap-4"> 
+                        <button onclick="reiniciarStockAValoresBase()" class="bg-red-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-600 shadow transition">
+                            <i class="fas fa-undo mr-2"></i> Reiniciar Stock a Base
+                        </button>
+                        <button onclick="abrirCRUDModal('new')" class="bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-600 shadow transition">
+                            <i class="fas fa-box-open mr-2"></i> Agregar Producto
+                        </button>
+                    </div>
+                </div>
+                <div class="overflow-y-scroll flex-1 border rounded-lg relative h-[60vh]"> 
+                    <table class="w-full">
+                        <thead>
+                            <tr>
+                                <th class="sticky top-0 z-10 shadow-sm">Código</th>
+                                <th class="sticky top-0 z-10 shadow-sm">Producto</th>
+                                <th class="sticky top-0 z-10 shadow-sm">Precio Unitario</th>
+                                <th class="sticky top-0 z-10 shadow-sm">Stock (Disponible para venta)</th>
+                                <th class="sticky top-0 z-10 shadow-sm">Acciones</th> </tr>
+                        </thead>
+                        <tbody id="tabla-inventario">
+                            </tbody>
+                    </table>
+                </div>
+                <p class="mt-4 text-xs text-gray-500">Los productos por peso muestran el precio por kilogramo (Kg) y el stock en kilogramos.</p>
+                <p class="mt-1 text-xs text-red-500 font-semibold">Las filas con fondo rojo indican que hay unidades en Merma (dañadas).</p>
+            </div>
+        </div>
+        
+        <div id="mermas" class="section-content flex-col">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1 flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-box-damage mr-2 text-red-500"></i>Productos en Merma (Dañados)</h2>
+                        <p class="text-sm text-gray-500">Productos no aptos para venta. Haz clic en 'Restaurar' para devolver stock al inventario.</p>
+                    </div>
+                    
+                    <div class="bg-red-100 px-4 py-2 rounded-lg border border-red-200">
+                        <span class="text-red-800 font-medium">Valor Total Desechado:</span>
+                        <span id="mermas-total-valor" class="text-2xl font-bold text-red-700 ml-2">$0.00</span>
+                    </div>
+                </div>
+                
+                <div class="overflow-y-auto flex-1 border rounded-lg">
+                    <table class="w-full">
+                        <thead>
+                            <tr>
+                                <th class="sticky top-0 z-10 bg-red-500">Código</th>
+                                <th class="sticky top-0 z-10 bg-red-500">Producto</th>
+                                <th class="sticky top-0 z-10 bg-red-500">Cantidad en Merma</th>
+                                <th class="sticky top-0 z-10 bg-red-500">Valor Estimado</th>
+                                <th class="sticky top-0 z-10 bg-red-500">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-mermas">
+                            </tbody>
+                    </table>
+                    <div id="no-merma-msg" class="p-12 text-center text-gray-400">
+                        <i class="fas fa-check-circle text-4xl mb-3 text-green-500"></i>
+                        <p>¡No hay productos en Merma! Todo en orden.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="creditos" class="section-content flex-col">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1 flex flex-col">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-user-clock mr-2 text-orange-500"></i>Créditos / Fiados Pendientes</h2>
+                <div class="overflow-y-auto flex-1 border rounded-lg">
+                    <table class="w-full">
+                        <thead>
+                            <tr>
+                                <th class="sticky top-0 z-10 bg-orange-500 text-white">Cliente</th>
+                                <th class="sticky top-0 z-10 bg-orange-500 text-white">Fecha</th>
+                                <th class="sticky top-0 z-10 bg-orange-500 text-white">Monto Pendiente</th>
+                                <th class="sticky top-0 z-10 bg-orange-500 text-white">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-creditos">
+                        </tbody>
+                    </table>
+                    <div id="no-creditos-msg" class="p-12 text-center text-gray-400">
+                        <i class="fas fa-thumbs-up text-4xl mb-3"></i>
+                        <p>No hay cuentas pendientes por cobrar.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="ventas" class="section-content flex-col">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1 flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800">Registro de Tickets de Venta</h2>
+                        <p class="text-sm text-gray-500">Haz clic en una venta para ver el detalle de productos</p>
+                    </div>
+                    
+                    <div class="flex gap-4 items-center">
+                         <button onclick="borrarHistorialSeguro()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg shadow text-sm font-bold transition">
+                            <i class="fas fa-skull-crossbones mr-2"></i> Borrar Historial
+                        </button>
+
+                        <div class="bg-green-100 px-4 py-2 rounded-lg border border-green-200">
+                            <span class="text-green-800 font-medium">Total Acumulado:</span>
+                            <span id="ventas-total-dia" class="text-2xl font-bold text-green-700 ml-2">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="overflow-y-auto flex-1 border rounded-lg">
+                    <table class="w-full">
+                        <thead>
+                            <tr>
+                                <th class="sticky top-0 z-10"># Venta</th>
+                                <th class="sticky top-0 z-10">Hora / Fecha</th>
+                                <th class="sticky top-0 z-10">Cliente / Estado</th>
+                                <th class="sticky top-0 z-10">Productos</th>
+                                <th class="sticky top-0 z-10">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-ventas">
+                            </tbody>
+                    </table>
+                    <div id="no-sales-msg" class="p-12 text-center text-gray-400">
+                        <i class="fas fa-receipt text-4xl mb-3"></i>
+                        <p>No hay ventas registradas.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="gastos" class="section-content flex-col">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1 flex flex-col">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-hand-holding-usd mr-2 text-red-500"></i>Registro de Gastos</h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div class="md:col-span-2">
+                        <label for="gasto-descripcion" class="block text-sm font-medium text-gray-700">Descripción del Gasto</label>
+                        <input type="text" id="gasto-descripcion" placeholder="Ej: Pago de Luz, Compra de papel" required class="mt-1 block w-full border-2 border-gray-300 rounded-lg p-2 focus:border-red-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="gasto-monto" class="block text-sm font-medium text-gray-700">Monto ($)</label>
+                        <input type="number" id="gasto-monto" min="0.01" step="0.01" placeholder="Ej: 150.50" required class="mt-1 block w-full border-2 border-gray-300 rounded-lg p-2 focus:border-red-500 focus:outline-none">
+                    </div>
+                    <button onclick="registrarGasto()" class="md:col-span-4 lg:col-span-1 bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 transition self-end">
+                        <i class="fas fa-plus-circle mr-2"></i> Registrar Gasto
+                    </button>
+                </div>
+
+                <div class="overflow-y-auto flex-1 border rounded-lg">
+                    <table class="w-full">
+                        <thead>
+                            <tr>
+                                <th class="sticky top-0 z-10 bg-gray-100 text-gray-600">Fecha / Hora</th>
+                                <th class="sticky top-0 z-10 bg-gray-100 text-gray-600">Descripción</th>
+                                <th class="sticky top-0 z-10 bg-gray-100 text-gray-600">Monto</th>
+                                <th class="sticky top-0 z-10 bg-gray-100 text-gray-600">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-gastos">
+                        </tbody>
+                    </table>
+                    <div id="no-gastos-msg" class="p-12 text-center text-gray-400">
+                        <i class="fas fa-money-bill-wave-alt text-4xl mb-3"></i>
+                        <p>No hay gastos registrados.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="reportes" class="section-content flex-col">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1 flex flex-col">
+                <div class="flex justify-between items-start mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-file-invoice-dollar mr-2"></i>Generador de Reportes de Venta</h2>
+                    
+                    <div class="flex gap-3">
+                         <button id="download-pdf-btn" onclick="descargarReportePDF()" 
+                            class="bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-700 transition shadow-lg"
+                        >
+                            <i class="fas fa-file-pdf mr-2"></i> GENERAR PDF
+                        </button>
+                        <button onclick="descargarReporteGlobal()" 
+                            class="bg-purple-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-purple-700 transition shadow-lg"
+                        >
+                            <i class="fas fa-globe mr-2"></i> REPORTE GLOBAL
+                        </button>
+                        </div>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                    <button onclick="generarReporte('diario')" class="bg-blue-500 text-white py-3 rounded-xl font-bold hover:bg-blue-600 transition shadow-md">
+                        <i class="fas fa-calendar-day mr-2"></i>Diario
+                    </button>
+                    <button onclick="generarReporte('semanal')" class="bg-indigo-500 text-white py-3 rounded-xl font-bold hover:bg-indigo-600 transition shadow-md">
+                        <i class="fas fa-calendar-alt mr-2"></i>Semanal
+                    </button>
+                    <button onclick="generarReporte('quincenal')" class="bg-purple-500 text-white py-3 rounded-xl font-bold hover:bg-purple-600 transition shadow-md">
+                        <i class="fas fa-calendar-week mr-2"></i>Quincenal
+                    </button>
+                    <button onclick="generarReporte('mensual')" class="bg-pink-500 text-white py-3 rounded-xl font-bold hover:bg-pink-600 transition shadow-md">
+                        <i class="fas fa-calendar mr-2"></i>Mensual
+                    </button>
+                </div>
+
+                <div id="pdf-container" class="flex-1 overflow-y-auto">
+                    <div id="pdf-content" class="bg-gray-50 p-6 rounded-xl border border-gray-200 flex flex-col min-h-full">
+                        
+                        <div class="flex justify-between items-center mb-4 border-b pb-2">
+                             <h3 id="reporte-title" class="text-xl font-semibold text-gray-700">Selecciona un periodo para generar el reporte.</h3>
+                        </div>
+                        
+                        <div id="reporte-results">
+                            <p class="text-gray-500">Aquí se mostrarán los datos de ventas para el periodo seleccionado.</p>
+                            
+                            <div id="reporte-total" class="mt-4 text-3xl font-bold text-green-700 hidden"></div>
+                            <h4 id="reporte-subtitle" class="text-lg font-medium text-gray-600 mt-4 mb-2 hidden">Resumen por Producto:</h4>
+                            <ul id="reporte-list" class="mt-4 space-y-2"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <div id="toast" class="fixed bottom-5 right-5 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg transform translate-y-20 transition-transform duration-300 z-50">
+        Mensaje aquí
+    </div>
+
+    <div id="detalle-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 transform translate-y-0 scale-100">
+            <div class="flex justify-between items-start border-b pb-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-800" id="modal-title">Detalle de Venta #0</h3>
+                <button onclick="cerrarDetalleModal()" class="text-gray-400 hover:text-gray-700">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <div class="max-h-96 overflow-y-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr>
+                            <th class="py-2 px-1 text-left bg-gray-100">Código</th>
+                            <th class="py-2 px-1 text-left bg-gray-100">Producto</th>
+                            <th class="py-2 px-1 text-right bg-gray-100">Precio</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modal-items-list">
+                        </tbody>
+                </table>
+            </div>
+            <div class="mt-4 pt-4 border-t flex justify-between items-center">
+                <span class="text-lg font-semibold text-gray-700">Total de Venta:</span>
+                <span class="text-2xl font-bold text-green-600" id="modal-total">$0.00</span>
+            </div>
+            
+            <div class="mt-2 text-sm">
+                <p class="flex justify-between text-gray-600"><span>Monto Recibido:</span> <span id="modal-pago" class="font-medium">$0.00</span></p>
+                <p class="flex justify-between text-lg font-bold text-blue-600 mt-1"><span>Cambio a Devolver:</span> <span id="modal-cambio">$0.00</span></p>
+            </div>
+            
+            <div class="mt-6">
+                <button id="btn-devolver-venta" class="w-full bg-red-500 text-white py-3 rounded-lg font-bold hover:bg-red-600 transition">
+                    <i class="fas fa-undo mr-2"></i> Devolver / Cancelar Venta
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="crud-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 transform translate-y-0 scale-100">
+            <div class="flex justify-between items-start border-b pb-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-800" id="crud-modal-title">Editar Producto</h3>
+                <button onclick="document.getElementById('crud-modal').classList.remove('active')" class="text-gray-400 hover:text-gray-700">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            
+            <form onsubmit="event.preventDefault(); guardarProducto()">
+                <input type="hidden" id="crud-original-codigo"> 
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="crud-codigo">Código (3 dígitos requerido)</label>
+                    <input type="text" id="crud-codigo" required maxlength="3" 
+                           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline text-lg font-mono disabled:bg-gray-100"
+                           placeholder="Ej: 101" disabled>
+                    <p id="codigo-feedback" class="text-xs mt-1 text-red-500"></p>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="crud-nombre">Nombre del Producto</label>
+                    <input type="text" id="crud-nombre" required 
+                           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="crud-precio">Precio Unitario (o por Kg)</label>
+                    <input type="number" id="crud-precio" required min="0.01" step="0.01" 
+                           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="crud-stock">Stock Actual</label>
+                    <input type="number" id="crud-stock" required min="0" step="any" 
+                           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                    <p class="text-xs text-gray-500 mt-1" id="stock-help">Unidades (o Kilogramos si aplica).</p>
+                </div>
+                
+                <div class="mb-6 flex items-center">
+                    <input id="crud-esPorPeso" type="checkbox" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mr-2">
+                    <label for="crud-esPorPeso" class="text-sm font-medium text-gray-700">Producto se vende por peso (Kg)</label>
+                </div>
+
+                <div class="flex justify-end gap-3">
+                    <button type="button" onclick="document.getElementById('crud-modal').classList.remove('active')" 
+                            class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded hover:bg-gray-400">
+                        Cancelar
+                    </button>
+                    <button type="submit" id="crud-save-btn" 
+                            class="bg-blue-500 text-white font-bold py-2 px-4 rounded hover:bg-blue-600 transition">
+                        Guardar Cambios
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="lock-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-95 flex items-center justify-center p-4 z-[9999]">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm text-center transform transition-all duration-300 scale-100">
+            <i class="fas fa-lock text-5xl text-red-500 mb-4"></i>
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">Sistema Bloqueado</h2>
+            <p class="text-gray-600 mb-6">Ingresa la contraseña de administrador para continuar.</p>
+            
+            <form id="form-desbloqueo">
+                <input 
+                    type="password" 
+                    id="passwordBloqueo" 
+                    placeholder="Contraseña" 
+                    required
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4 text-center text-lg"
+                    autocomplete="off"
+                >
+                <button 
+                    type="submit" 
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition duration-150 shadow-md hover:shadow-lg"
+                >
+                    <i class="fas fa-unlock-alt mr-2"></i> Desbloquear
+                </button>
+            </form>
+            <p id="unlock-feedback" class="text-sm mt-3 text-red-500 hidden">Contraseña incorrecta.</p>
+        </div>
+    </div>
+    <script>
+        // --- VARIABLES GLOBALES ---
+        const ADMIN_PASS = 'admin123'; 
+        let carrito = [];
+        let inventario = [];
+        let registroVentas = [];
+        let contadorVentas = 1; 
+        let registroGastos = []; 
+        let contadorGastos = 1; 
+        let productoSeleccionadoPorBusqueda = null;
+        let ultimoReporte = null; 
+        let ultimoReporteTitulo = '';
+        let ultimoReporteFechaInicio = ''; 
+        let ultimoReporteFechaFin = ''; 
+
+        // --- DATOS INICIALES (100 PRODUCTOS) ---
+        const INVENTARIO_BASE = [
+            { codigo: '001', nombre: 'Leche Entera 1L', precio: 28.00, stock: 50 },
+            { codigo: '002', nombre: 'Pan de Caja Blanco', precio: 45.00, stock: 30 },
+            { codigo: '003', nombre: 'Coca Cola 600ml', precio: 18.00, stock: 100 },
+            { codigo: '004', nombre: 'Sabritas Sal 45g', precio: 17.00, stock: 40 },
+            { codigo: '005', nombre: 'Galletas Marías', precio: 15.00, stock: 60 },
+            { codigo: '006', nombre: 'Huevo (Kg)', precio: 42.00, stock: 20.00, esPorPeso: true }, 
+            { codigo: '007', nombre: 'Aceite Vegetal', precio: 55.00, stock: 25 },
+            { codigo: '008', nombre: 'Atún en Agua', precio: 22.00, stock: 80 },
+            { codigo: '009', nombre: 'Arroz Grano Fino (Kg)', precio: 30.00, stock: 35.00, esPorPeso: true }, 
+            { codigo: '010', nombre: 'Frijol Negro (Kg)', precio: 35.00, stock: 35.00, esPorPeso: true }, 
+            { codigo: '011', nombre: 'Azúcar Estándar (Kg)', precio: 28.00, stock: 40.00, esPorPeso: true }, 
+            { codigo: '012', nombre: 'Café Soluble', precio: 85.00, stock: 15 },
+            { codigo: '013', nombre: 'Jabón de Tocador', precio: 12.00, stock: 50 },
+            { codigo: '014', nombre: 'Pasta de Dientes', precio: 35.00, stock: 25 },
+            { codigo: '015', nombre: 'Papel Higiénico (4p)', precio: 32.00, stock: 30 },
+            { codigo: '016', nombre: 'Detergente Polvo 500g', precio: 40.00, stock: 20 },
+            { codigo: '017', nombre: 'Cloro 1L', precio: 15.00, stock: 45 },
+            { codigo: '018', nombre: 'Yogurt Bebible', precio: 14.00, stock: 40 },
+            { codigo: '019', nombre: 'Chocolate Barra', precio: 12.00, stock: 60 },
+            { codigo: '020', nombre: 'Agua Embotellada 1L', precio: 12.00, stock: 100 },
+            { codigo: '021', nombre: 'Sal de Mesa (Kg)', precio: 10.00, stock: 50.00, esPorPeso: true },
+            { codigo: '022', nombre: 'Mayonesa 300g', precio: 25.00, stock: 30 },
+            { codigo: '023', nombre: 'Cereal de Maíz', precio: 48.00, stock: 25 },
+            { codigo: '024', nombre: 'Salsa Catsup', precio: 18.00, stock: 40 },
+            { codigo: '025', nombre: 'Mostaza', precio: 15.00, stock: 40 },
+            { codigo: '026', nombre: 'Vinagre Blanco', precio: 12.00, stock: 30 },
+            { codigo: '027', nombre: 'Puré de Tomate', precio: 8.00, stock: 60 },
+            { codigo: '028', nombre: 'Sopa de Pasta', precio: 9.00, stock: 80 },
+            { codigo: '029', nombre: 'Consomé de Pollo', precio: 14.00, stock: 50 },
+            { codigo: '030', nombre: 'Harina de Trigo', precio: 20.00, stock: 30 },
+            { codigo: '031', nombre: 'Harina de Maíz', precio: 18.00, stock: 35 },
+            { codigo: '032', nombre: 'Mermelada Fresa', precio: 32.00, stock: 20 },
+            { codigo: '033', nombre: 'Leche Condensada', precio: 24.00, stock: 40 },
+            { codigo: '034', nombre: 'Leche Evaporada', precio: 22.00, stock: 40 },
+            { codigo: '035', nombre: 'Té de Manzanilla', precio: 15.00, stock: 30 },
+            { codigo: '036', nombre: 'Gelatina Polvo', precio: 10.00, stock: 60 },
+            { codigo: '037', nombre: 'Flan Polvo', precio: 12.00, stock: 50 },
+            { codigo: '038', nombre: 'Velas (Paquete)', precio: 15.00, stock: 40 },
+            { codigo: '039', nombre: 'Cerillos', precio: 5.00, stock: 100 },
+            { codigo: '040', nombre: 'Encendedor', precio: 10.00, stock: 50 },
+            { codigo: '041', nombre: 'Plato Desechable', precio: 25.00, stock: 30 },
+            { codigo: '042', nombre: 'Vaso Desechable', precio: 20.00, stock: 35 },
+            { codigo: '043', nombre: 'Servilletas (Paq)', precio: 28.00, stock: 40 },
+            { codigo: '044', nombre: 'Papel Aluminio', precio: 35.00, stock: 25 },
+            { codigo: '045', nombre: 'Bolsas Basura', precio: 22.00, stock: 40 },
+            { codigo: '046', nombre: 'Fibras Limpieza', precio: 15.00, stock: 50 },
+            { codigo: '047', nombre: 'Jugo Naranja 1L', precio: 26.00, stock: 30 },
+            { codigo: '048', nombre: 'Refresco Lima', precio: 18.00, stock: 40 },
+            { codigo: '049', nombre: 'Agua Mineral', precio: 16.00, stock: 45 },
+            { codigo: '050', nombre: 'Bebida Energética', precio: 35.00, stock: 20 },
+            { codigo: '051', nombre: 'Chicles (Paq)', precio: 10.00, stock: 80 },
+            { codigo: '052', nombre: 'Paletas Caramelo', precio: 5.00, stock: 100 },
+            { codigo: '053', nombre: 'Bombones', precio: 15.00, stock: 40 },
+            { codigo: '054', nombre: 'Cacahuate Salado', precio: 12.00, stock: 60 },
+            { codigo: '055', nombre: 'Papas Fritas', precio: 35.00, stock: 25 },
+            { codigo: '056', nombre: 'Totopos', precio: 28.00, stock: 20 },
+            { codigo: '057', nombre: 'Salsa Picante', precio: 14.00, stock: 50 },
+            { codigo: '058', nombre: 'Limpiador Pisos 1L', precio: 25.00, stock: 30 },
+            { codigo: '059', nombre: 'Suavizante Ropa', precio: 30.00, stock: 25 },
+            { codigo: '060', nombre: 'Shampoo 400ml', precio: 45.00, stock: 20 },
+            { codigo: '061', nombre: 'Acondicionador', precio: 45.00, stock: 20 },
+            { codigo: '062', nombre: 'Crema Corporal', precio: 38.00, stock: 25 },
+            { codigo: '063', nombre: 'Desodorante', precio: 35.00, stock: 30 },
+            { codigo: '064', nombre: 'Toallas Femeninas', precio: 40.00, stock: 30 },
+            { codigo: '065', nombre: 'Pañales (Paq)', precio: 120.00, stock: 15 },
+            { codigo: '066', nombre: 'Toallitas Húmedas', precio: 25.00, stock: 35 },
+            { codigo: '067', nombre: 'Alimento Perro 1Kg', precio: 45.00, stock: 20 },
+            { codigo: '068', nombre: 'Alimento Gato 1Kg', precio: 45.00, stock: 20 },
+            { codigo: '069', nombre: 'Pilas AA (Paq)', precio: 30.00, stock: 40 },
+            { codigo: '070', nombre: 'Focos LED', precio: 25.00, stock: 50 },
+            
+            // Productos agregados del 071 al 100
+            { codigo: '071', nombre: 'Naranja (Kg)', precio: 18.00, stock: 15.00, esPorPeso: true },
+            { codigo: '072', nombre: 'Manzana (Kg)', precio: 35.00, stock: 10.00, esPorPeso: true },
+            { codigo: '073', nombre: 'Plátano (Kg)', precio: 15.00, stock: 20.00, esPorPeso: true },
+            { codigo: '074', nombre: 'Cebolla (Kg)', precio: 20.00, stock: 12.00, esPorPeso: true },
+            { codigo: '075', nombre: 'Jitomate (Kg)', precio: 25.00, stock: 8.00, esPorPeso: true },
+            { codigo: '076', nombre: 'Limón (Kg)', precio: 30.00, stock: 5.00, esPorPeso: true },
+            { codigo: '077', nombre: 'Chile Verde (Kg)', precio: 40.00, stock: 4.00, esPorPeso: true },
+            { codigo: '078', nombre: 'Zanahoria (Kg)', precio: 15.00, stock: 18.00, esPorPeso: true },
+            { codigo: '079', nombre: 'Papa (Kg)', precio: 22.00, stock: 25.00, esPorPeso: true },
+            { codigo: '080', nombre: 'Aguacate (Unidad)', precio: 18.00, stock: 40 },
+            { codigo: '081', nombre: 'Sandía (Unidad)', precio: 50.00, stock: 10 },
+            { codigo: '082', nombre: 'Melón (Unidad)', precio: 35.00, stock: 15 },
+            { codigo: '083', nombre: 'Cerveza Lata (Unidad)', precio: 20.00, stock: 80 },
+            { codigo: '084', nombre: 'Vino Tinto (Botella)', precio: 150.00, stock: 10 },
+            { codigo: '085', nombre: 'Refresco 2L', precio: 30.00, stock: 45 },
+            { codigo: '086', nombre: 'Queso Panela 200g', precio: 45.00, stock: 30 },
+            { codigo: '087', nombre: 'Jamón Pavo 250g', precio: 40.00, stock: 35 },
+            { codigo: '088', nombre: 'Margarina 225g', precio: 50.00, stock: 20 },
+            { codigo: '089', nombre: 'Crema Ácida 200g', precio: 25.00, stock: 30 },
+            { codigo: '090', nombre: 'Tortillas (Kg)', precio: 20.00, stock: 50.00, esPorPeso: true },
+            { codigo: '091', nombre: 'Pan Molido', precio: 22.00, stock: 25 },
+            { codigo: '092', nombre: 'Chorizo 200g', precio: 35.00, stock: 30 },
+            { codigo: '093', nombre: 'Salchicha (Paq)', precio: 30.00, stock: 35 },
+            { codigo: '094', nombre: 'Queso Amarillo (Paq)', precio: 40.00, stock: 25 },
+            { codigo: '095', nombre: 'Jugo Durazno Lata', precio: 18.00, stock: 50 },
+            { codigo: '096', nombre: 'Néctar Mango', precio: 20.00, stock: 45 },
+            { codigo: '097', nombre: 'Galletas Saladas', precio: 20.00, stock: 40 },
+            { codigo: '098', nombre: 'Cigarros (Cajetilla)', precio: 70.00, stock: 20 },
+            { codigo: '099', nombre: 'Churro Botana', precio: 15.00, stock: 60 },
+            { codigo: '100', nombre: 'Pelota Juguete', precio: 10.00, stock: 50 }
+        ];
+
+
+        // --- FUNCIÓN DE INICIALIZACIÓN ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const inventarioGuardado = localStorage.getItem('inventarioActual');
+            if (inventarioGuardado) {
+                inventario = JSON.parse(inventarioGuardado);
+                
+                // 1. Asegurar que todos los 100 productos base estén en el inventario y tengan la propiedad stockMerma
+                INVENTARIO_BASE.forEach(baseP => {
+                    const existingP = inventario.find(p => p.codigo === baseP.codigo);
+                    if (!existingP) {
+                        inventario.push({...baseP, stockMerma: 0}); // Agregar productos base faltantes con stockMerma 
+                    } else {
+                        // Asegurar que las propiedades de tipo existan y estén sincronizadas
+                        existingP.esPorPeso = baseP.esPorPeso || false;
+                        // NUEVO: Inicializar stockMerma si no existe (para compatibilidad)
+                        if (existingP.stockMerma === undefined) existingP.stockMerma = 0;
+                    }
+                });
+                // 2. Ordenar inventario por código
+                inventario.sort((a, b) => parseInt(a.codigo) - parseInt(b.codigo));
+            } else {
+                // Copiar la base e inicializar stockMerma a 0 para todos
+                inventario = INVENTARIO_BASE.map(p => ({...p, stockMerma: 0})); 
+                localStorage.setItem('inventarioActual', JSON.stringify(inventario));
+            }
+
+            const ventasGuardadas = localStorage.getItem('historialVentas');
+            if (ventasGuardadas) {
+                registroVentas = JSON.parse(ventasGuardadas);
+                if (registroVentas.length > 0) {
+                    contadorVentas = Math.max(...registroVentas.map(v => v.id)) + 1;
+                }
+            }
+            
+            // Cargar gastos
+            const gastosGuardados = localStorage.getItem('historialGastos');
+            if (gastosGuardados) {
+                registroGastos = JSON.parse(gastosGuardados);
+                if (registroGastos.length > 0) {
+                    contadorGastos = Math.max(...registroGastos.map(g => g.id)) + 1;
+                }
+            }
+
+            // Control de persistencia de bloqueo
+            if (localStorage.getItem('isLocked') === 'true') {
+                const modal = document.getElementById('lock-modal');
+                if (modal) modal.classList.add('active');
+                document.querySelectorAll('.section-content').forEach(el => el.classList.remove('active'));
+            } else {
+                showSection('inicio'); 
+            }
+
+            // Asocia la función al botón de 'Bloquear' y al formulario de 'Desbloqueo'
+            document.getElementById('btn-bloquear').addEventListener('click', lockScreen);
+            document.getElementById('form-desbloqueo').addEventListener('submit', unlockScreenFromForm);
+            
+            renderVentas();
+            renderGastos(); 
+        });
+
+
+        // --- FUNCIONES DE NAVEGACIÓN ---
+        function showSection(sectionId) {
+            document.querySelectorAll('.section-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(sectionId).classList.add('active');
+            document.getElementById(`btn-${sectionId}`).classList.add('active');
+
+            if(sectionId === 'inventario') renderInventario();
+            if(sectionId === 'mermas') renderMermas(); 
+            if(sectionId === 'ventas') renderVentas(); 
+            if(sectionId === 'gastos') renderGastos(); 
+            if(sectionId === 'creditos') renderCreditos(); 
+            if(sectionId === 'inicio') setTimeout(() => document.getElementById('input-codigo').focus(), 100);
+
+            // Ocultar el botón de descarga al cambiar de sección
+            document.getElementById('download-pdf-btn').classList.remove('pulse-red');
+            // Ocultar sugerencias al cambiar de sección
+            document.getElementById('sugerencias-lista').innerHTML = '';
+        }
+
+        // --- FUNCIONES DE SEGURIDAD Y BLOQUEO ---
+        function lockScreen() {
+            localStorage.setItem('isLocked', 'true');
+            const modal = document.getElementById('lock-modal');
+            const passwordInput = document.getElementById('passwordBloqueo');
+            const feedback = document.getElementById('unlock-feedback');
+            if (passwordInput) passwordInput.value = '';
+            if (feedback) feedback.classList.add('hidden');
+            if (modal) modal.classList.add('active');
+            document.querySelectorAll('.section-content').forEach(el => el.classList.remove('active'));
+            mostrarToast("Sistema bloqueado. Ingrese la contraseña de administrador para desbloquear.", "error");
+        }
+
+        function unlockScreenFromForm(event) {
+            if (event) event.preventDefault();
+            const passwordInput = document.getElementById('passwordBloqueo');
+            const password = passwordInput ? passwordInput.value : '';
+            const feedback = document.getElementById('unlock-feedback');
+
+            if (password === ADMIN_PASS) {
+                localStorage.removeItem('isLocked');
+                const modal = document.getElementById('lock-modal');
+                if (modal) modal.classList.remove('active');
+                showSection('inicio'); 
+                mostrarToast("Sistema desbloqueado.", "success");
+                if (passwordInput) passwordInput.value = '';
+                if (feedback) feedback.classList.add('hidden');
+                return true;
+            } else {
+                mostrarToast("Contraseña incorrecta.", "error");
+                if (feedback) {
+                    feedback.textContent = 'Contraseña incorrecta.';
+                    feedback.classList.remove('hidden');
+                }
+                if (passwordInput) {
+                    passwordInput.value = '';
+                    passwordInput.focus();
+                }
+                return false;
+            }
+        }
+
+        // --- FUNCIONES DE CAJA (BÚSQUEDA Y CARRITO) ---
+        function mostrarSugerencias() {
+            const input = document.getElementById('input-codigo');
+            const lista = document.getElementById('sugerencias-lista');
+            const busqueda = input.value.trim().toLowerCase();
+            lista.innerHTML = '';
+            productoSeleccionadoPorBusqueda = null;
+
+            if (busqueda.length < 2) return;
+
+            const sugerencias = inventario
+                .filter(prod => (prod.nombre.toLowerCase().includes(busqueda) || prod.codigo.includes(busqueda)) && prod.stock > 0) // Solo sugerir productos con stock disponible
+                .slice(0, 10); 
+
+            if (sugerencias.length === 0) return;
+
+            sugerencias.forEach(prod => {
+                const div = document.createElement('div');
+                div.className = 'sugerencia-item p-3 border-b text-gray-800 flex justify-between';
+                div.setAttribute('data-codigo', prod.codigo);
+                div.innerHTML = `
+                    <span class="font-medium">${prod.nombre}</span>
+                    <span class="text-xs text-gray-500 font-mono">${prod.codigo} (Stock: ${prod.stock.toFixed(prod.esPorPeso ? 3 : 0)})</span>
+                `;
+                div.onclick = () => seleccionarProducto(prod.codigo);
+                lista.appendChild(div);
+            });
+
+            productoSeleccionadoPorBusqueda = sugerencias[0] || null;
+        }
+
+        function seleccionarProducto(codigo) {
+            const input = document.getElementById('input-codigo');
+            input.value = codigo;
+            document.getElementById('sugerencias-lista').innerHTML = '';
+            productoSeleccionadoPorBusqueda = null;
+            agregarAlCarrito();
+        }
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const input = document.getElementById('input-codigo');
+                const busqueda = input.value.trim();
+
+                if (productoSeleccionadoPorBusqueda) {
+                    seleccionarProducto(productoSeleccionadoPorBusqueda.codigo);
+                } 
+                else if (busqueda.length > 0) {
+                    agregarAlCarrito();
+                }
+            }
+        }
+
+        function agregarAlCarrito() {
+            const input = document.getElementById('input-codigo');
+            let inputValor = input.value.trim();
+            let codigo = inputValor;
+            let cantidad = 1;
+            let separador = null;
+            let producto = null;
+
+            if (productoSeleccionadoPorBusqueda && !inputValor.includes('x') && !inputValor.includes('*')) {
+                codigo = productoSeleccionadoPorBusqueda.codigo;
+            }
+
+            if (inputValor.includes('x')) {
+                separador = 'x';
+            } else if (inputValor.includes('*')) {
+                separador = '*';
+            }
+
+            if (separador) {
+                [codigo, cantidad] = inputValor.split(separador);
+                codigo = codigo.trim();
+                cantidad = parseInt(cantidad.trim());
+                if (isNaN(cantidad) || cantidad <= 0) {
+                    mostrarToast('Cantidad inválida. Usar formato: CODIGOxCANTIDAD', 'error');
+                    input.value = '';
+                    input.focus();
+                    return;
+                }
+            }
+
+            producto = inventario.find(p => p.codigo === codigo || p.nombre.toLowerCase() === codigo.toLowerCase());
+
+            if (!producto) {
+                mostrarToast('Producto no encontrado.', 'error');
+                input.value = '';
+                input.focus();
+                return;
+            }
+            
+            // El stockMerma ya está restado del stock, solo verificamos stock disponible
+            if (producto.stock <= 0) {
+                mostrarToast(`¡Stock agotado para ${producto.nombre}! (Stock Merma: ${producto.stockMerma.toFixed(producto.esPorPeso ? 3 : 0)} ${producto.esPorPeso ? 'Kg' : 'Ud'})`, 'error');
+                input.value = '';
+                input.focus();
+                return;
+            }
+
+            // --- Lógica Productos por Peso (ignora el multiplicador) ---
+            if (producto.esPorPeso) {
+                if (cantidad > 1) {
+                    mostrarToast(`"${producto.nombre}" es por peso (Kg). El multiplicador (x${cantidad}) ha sido ignorado.`, 'neutral');
+                }
+
+                const precioUnidad = producto.precio;
+                const pesoStr = prompt(`"${producto.nombre}" es por peso (Kg). Stock disponible: ${producto.stock.toFixed(3)} Kg.\nIngrese la cantidad en Kilogramos (Ej: 1.5 Kg, 0.300 para 300 gramos):`);
+
+                if (pesoStr === null || pesoStr.trim() === "") {
+                    mostrarToast('Operación cancelada.', 'neutral');
+                    input.value = '';
+                    input.focus();
+                    return;
+                }
+
+                let pesoKg = parseFloat(pesoStr);
+
+                if (isNaN(pesoKg) || pesoKg <= 0) {
+                    mostrarToast('Peso inválido. Usa solo números positivos.', 'error');
+                    input.value = '';
+                    input.focus();
+                    return;
+                }
+                
+                pesoKg = parseFloat(pesoKg.toFixed(3));
+
+                if (producto.stock < pesoKg) {
+                    mostrarToast(`¡Stock insuficiente! Solo quedan ${producto.stock.toFixed(3)} Kg disponibles para venta.`, 'error');
+                    input.value = '';
+                    input.focus();
+                    return;
+                }
+
+                const costoCalculado = pesoKg * precioUnidad;
+                
+                const productoParaCarrito = {
+                    codigo: producto.codigo,
+                    nombre: `${producto.nombre} (${pesoKg.toFixed(3)} Kg)`,
+                    precio: costoCalculado,
+                    esPorPeso: true,
+                    pesoVendido: pesoKg 
+                };
+
+                carrito.push(productoParaCarrito);
+                mostrarToast(`Agregado: ${productoParaCarrito.nombre} - $${productoParaCarrito.precio.toFixed(2)}`, 'success');
+
+            } 
+            // --- Lógica Productos por Unidad (con multiplicador) ---
+            else {
+                if (producto.stock < cantidad) {
+                    mostrarToast(`¡Stock insuficiente! Solo quedan ${producto.stock} unidades de ${producto.nombre}. No se pueden agregar ${cantidad}.`, 'error');
+                    input.value = '';
+                    input.focus();
+                    return;
+                }
+
+                let precioUnidad = producto.precio;
+                for (let i = 0; i < cantidad; i++) {
+                    carrito.push({
+                        codigo: producto.codigo,
+                        nombre: producto.nombre,
+                        precio: precioUnidad,
+                        esPorPeso: false,
+                        pesoVendido: 1 
+                    });
+                }
+                mostrarToast(`Agregado ${cantidad} x ${producto.nombre} - Total: $${(precioUnidad * cantidad).toFixed(2)}`, 'success');
+            }
+
+            input.value = '';
+            document.getElementById('sugerencias-lista').innerHTML = '';
+            input.focus(); 
+            renderCarrito();
+        }
+
+        
+        function renderCarrito() {
+            const tbody = document.getElementById('lista-carrito');
+            const emptyMsg = document.getElementById('empty-cart-msg');
+            tbody.innerHTML = '';
+
+            if (carrito.length === 0) {
+                emptyMsg.style.display = 'block';
+                document.getElementById('total-pagar').textContent = '$0.00';
+                document.getElementById('total-items').textContent = '0';
+                return;
+            }
+
+            emptyMsg.style.display = 'none';
+
+            let total = 0;
+            carrito.forEach((item, index) => {
+                total += item.precio;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="font-mono text-gray-600">${item.codigo}</td>
+                    <td class="font-medium">${item.nombre}</td>
+                    <td class="text-green-600 font-bold">$${item.precio.toFixed(2)}</td>
+                    <td>
+                        <button onclick="eliminarDelCarrito(${index})" class="text-red-500 hover:text-red-700 hover:bg-red-50 rounded p-1">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('total-pagar').textContent = `$${total.toFixed(2)}`;
+            document.getElementById('total-items').textContent = carrito.length;
+        }
+
+        function eliminarDelCarrito(index) {
+            const nombre = carrito[index].nombre;
+            carrito.splice(index, 1);
+            renderCarrito();
+            mostrarToast(`Eliminado del carrito: ${nombre}`, 'neutral');
+        }
+
+        function limpiarCarrito() {
+            if (carrito.length === 0) {
+                mostrarToast('El carrito ya está vacío.', 'neutral');
+                return;
+            }
+            if (confirm("¿Estás seguro de cancelar la venta y limpiar el carrito?")) {
+                carrito = [];
+                renderCarrito();
+                mostrarToast('Venta cancelada. Carrito vacío.', 'neutral');
+            }
+        }
+
+        function realizarVenta() {
+            if (carrito.length === 0) {
+                mostrarToast('No hay productos en el carrito.', 'error');
+                return;
+            }
+
+            const totalPagar = carrito.reduce((sum, item) => sum + item.precio, 0);
+            let montoRecibido = null;
+            let cambio = 0;
+
+            while (true) {
+                const pagoStr = prompt(`TOTAL A COBRAR: $${totalPagar.toFixed(2)}\n\nIngrese el monto con el que paga el cliente:`);
+                
+                if (pagoStr === null) {
+                    mostrarToast('Operación de cobro cancelada.', 'neutral');
+                    return;
+                }
+
+                montoRecibido = parseFloat(pagoStr);
+
+                if (isNaN(montoRecibido) || montoRecibido <= 0) {
+                    mostrarToast('Monto inválido. Intente de nuevo.', 'error');
+                    continue;
+                }
+
+                if (montoRecibido < totalPagar) {
+                    mostrarToast('El monto recibido es menor al total a pagar. Intente de nuevo.', 'error');
+                    continue;
+                }
+                break;
+            }
+            
+            cambio = montoRecibido - totalPagar;
+            procesarVenta(totalPagar, montoRecibido, cambio, false, null);
+        }
+
+        function realizarVentaCredito() {
+            if (carrito.length === 0) {
+                mostrarToast('No hay productos en el carrito.', 'error');
+                return;
+            }
+            
+            const cliente = prompt("Ingrese el nombre del cliente para el FIADO (Crédito):");
+            if (cliente === null || cliente.trim() === "") {
+                mostrarToast('Se requiere el nombre del cliente para fiar.', 'error');
+                return;
+            }
+
+            const totalPagar = carrito.reduce((sum, item) => sum + item.precio, 0);
+            
+            // Guardamos con pago 0 y cambio 0, y marcamos como pendiente
+            procesarVenta(totalPagar, 0, 0, true, cliente.trim());
+        }
+
+        function procesarVenta(totalPagar, montoRecibido, cambio, esCredito, nombreCliente) {
+             const itemsAgrupados = {};
+            carrito.forEach(item => {
+                const key = item.codigo + (item.esPorPeso ? '_P' : '_U');
+                if (!itemsAgrupados[key]) {
+                    itemsAgrupados[key] = {
+                        codigo: item.codigo,
+                        nombre: item.nombre,
+                        precio: item.precio, 
+                        esPorPeso: item.esPorPeso,
+                        pesoVendido: item.esPorPeso ? item.pesoVendido : 1
+                    };
+                } else {
+                    itemsAgrupados[key].precio += item.precio;
+                    itemsAgrupados[key].pesoVendido += item.pesoVendido;
+                }
+            });
+            
+            // Reducir stock (ya incluye la lógica de stockMerma)
+            Object.values(itemsAgrupados).forEach(itemA => {
+                const producto = inventario.find(p => p.codigo === itemA.codigo);
+                if (producto) {
+                    producto.stock = producto.stock - itemA.pesoVendido;
+                    if (producto.stock < 0) producto.stock = 0;
+                    
+                    if (producto.esPorPeso) {
+                         producto.stock = parseFloat(producto.stock.toFixed(3));
+                    }
+                }
+            });
+
+            // Crear el registro de venta
+            const now = new Date();
+            const venta = {
+                id: contadorVentas++,
+                total: totalPagar,
+                pago: montoRecibido,
+                cambio: cambio,
+                // Asegurar que la fecha y hora se guarden en formatos estándar.
+                fecha: now.toLocaleDateString('es-MX'), // DD/MM/AAAA
+                hora: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), // HH:MM:SS
+                items: Object.values(itemsAgrupados),
+                cancelada: false,
+                pendiente: esCredito, // NUEVO: Flag para crédito
+                cliente: nombreCliente // NUEVO: Nombre del cliente si es crédito
+            };
+            registroVentas.push(venta);
+            
+            // Guardar en localStorage
+            localStorage.setItem('inventarioActual', JSON.stringify(inventario));
+            localStorage.setItem('historialVentas', JSON.stringify(registroVentas));
+            
+            // Limpiar y actualizar la vista
+            carrito = [];
+            renderCarrito();
+            renderVentas(); 
+            renderInventario(); 
+            renderCreditos(); // Actualizar tabla de créditos
+            
+            if (esCredito) {
+                mostrarToast(`Venta a CRÉDITO para ${nombreCliente} registrada.`, 'success');
+            } else {
+                // Mostrar la feria (cambio)
+                alert(`
+                    --- ¡Venta #${venta.id} Finalizada! ---\n
+                    Total Pagado: $${totalPagar.toFixed(2)}\n
+                    Monto Recibido: $${montoRecibido.toFixed(2)}\n
+                    =================================\n
+                    CAMBIO A DEVOLVER: $${cambio.toFixed(2)}
+                `.trim());
+                mostrarToast(`¡Venta #${venta.id} finalizada! Cambio a devolver: $${cambio.toFixed(2)}`, 'success');
+            }
+        }
+
+
+        // --- FUNCIONES DE INVENTARIO (CRUD) ---
+
+        function renderInventario() {
+            const tbody = document.getElementById('tabla-inventario');
+            tbody.innerHTML = '';
+
+            inventario.forEach(producto => {
+                const tr = document.createElement('tr');
+                const unidadTexto = producto.esPorPeso ? 'Kg' : 'Ud';
+                
+                // Stock DISPONIBLE para venta
+                const stockDisponible = producto.esPorPeso ? producto.stock.toFixed(3) : producto.stock;
+                
+                // Lógica para stock en Merma y estilos
+                const isLowStock = producto.stock <= 5 && !producto.esPorPeso && producto.stock > 0;
+                const isMerma = producto.stockMerma > 0;
+                
+                let stockTexto = `${stockDisponible} ${unidadTexto}`;
+                if (isMerma) {
+                    tr.classList.add('producto-merma'); // Aplicar el fondo rojo
+                    const mermaQuantity = producto.esPorPeso ? producto.stockMerma.toFixed(3) : producto.stockMerma;
+                    stockTexto += ` (Merma: ${mermaQuantity})`;
+                }
+
+                if (isLowStock) {
+                    // Solo si no está en Merma, aplicamos el color de bajo stock, si no, el estilo de merma domina
+                    if (!isMerma) tr.classList.add('text-red-500', 'font-bold');
+                }
+                
+                // Botón de Merma o Restaurar
+                const mermaActionBtn = isMerma ? 
+                    `<button onclick="restaurarDeMerma('${producto.codigo}', true)" class="text-green-600 hover:text-green-800 hover:bg-green-50 rounded p-1 text-sm">
+                        <i class="fas fa-history"></i> Restaurar Merma
+                    </button>` :
+                    `<button onclick="moverAMerma('${producto.codigo}')" class="text-yellow-600 hover:text-yellow-800 hover:bg-yellow-50 rounded p-1 text-sm">
+                        <i class="fas fa-box-damage"></i> Mover a Merma
+                    </button>`;
+
+
+                tr.innerHTML = `
+                    <td class="font-bold font-mono">${producto.codigo}</td>
+                    <td>${producto.nombre}</td>
+                    <td class="text-green-600 font-bold">$${producto.precio.toFixed(2)} / ${unidadTexto}</td>
+                    <td>${stockTexto}</td>
+                    <td class="flex gap-2 items-center">
+                        <button onclick="abrirCRUDModal('edit', '${producto.codigo}')" class="text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded p-1 text-sm">
+                            <i class="fas fa-edit"></i> Editar
+                        </button>
+                        ${mermaActionBtn}
+                        <button onclick="eliminarProducto('${producto.codigo}')" class="text-red-500 hover:text-red-700 hover:bg-red-50 rounded p-1 text-sm">
+                            <i class="fas fa-trash-alt"></i> Eliminar
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        function reiniciarStockAValoresBase() {
+            const password = prompt("Ingrese la contraseña de administrador para REINICIAR el stock:");
+            if (password === ADMIN_PASS) {
+                if (confirm("¡ATENCIÓN! Esto restaurará el stock de todos los productos base a sus valores iniciales (50, 100, 20kg, etc.). Los productos agregados manualmente mantendrán su stock actual y las mermas NO serán afectadas. ¿Continuar?")) {
+                    let productosRestaurados = 0;
+                    inventario = inventario.map(p => {
+                        const base = INVENTARIO_BASE.find(bp => bp.codigo === p.codigo);
+                        if (base) {
+                            if (p.stock !== base.stock) {
+                                productosRestaurados++;
+                            }
+                            // Mantenemos stockMerma y restauramos stock al valor base
+                            return {...p, stock: base.stock}; 
+                        } else {
+                            return p;
+                        }
+                    });
+                    localStorage.setItem('inventarioActual', JSON.stringify(inventario));
+                    renderInventario();
+                    // MENSAJE DE CONFIRMACIÓN CLARO
+                    mostrarToast(`¡Éxito! Stock de ${productosRestaurados} productos base restaurado a valores iniciales.`, 'success'); 
+                }
+            } else if (password !== null) {
+                mostrarToast("Contraseña incorrecta", "error");
+            }
+        }
+        
+        // --- FUNCIONES DE MERMAS ---
+
+        function renderMermas() {
+            const tbody = document.getElementById('tabla-mermas');
+            tbody.innerHTML = '';
+            
+            // Filtrar productos que tienen alguna cantidad en Merma
+            const productosMerma = inventario.filter(p => p.stockMerma > 0);
+            const noMermaMsg = document.getElementById('no-merma-msg');
+
+            if (productosMerma.length === 0) {
+                if (noMermaMsg) noMermaMsg.style.display = 'block';
+                document.getElementById('mermas-total-valor').textContent = `$0.00`;
+                return;
+            }
+            if (noMermaMsg) noMermaMsg.style.display = 'none';
+
+            let totalMermaValor = 0;
+
+            productosMerma.forEach(producto => {
+                const unidadTexto = producto.esPorPeso ? 'Kg' : 'Ud';
+                const stockMerma = producto.esPorPeso ? producto.stockMerma.toFixed(3) : producto.stockMerma;
+                const valorMerma = producto.stockMerma * producto.precio;
+                totalMermaValor += valorMerma;
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-red-50 transition';
+                tr.innerHTML = `
+                    <td class="font-bold font-mono text-gray-700">${producto.codigo}</td>
+                    <td class="text-gray-700">${producto.nombre}</td>
+                    <td class="font-medium">${stockMerma} ${unidadTexto}</td>
+                    <td class="text-red-600 font-bold">$${valorMerma.toFixed(2)}</td>
+                    <td>
+                        <button onclick="restaurarDeMerma('${producto.codigo}', true)" class="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 transition text-sm">
+                            <i class="fas fa-undo mr-1"></i> Restaurar
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            document.getElementById('mermas-total-valor').textContent = `$${totalMermaValor.toFixed(2)}`;
+        }
+
+        function moverAMerma(codigo) {
+            const producto = inventario.find(p => p.codigo === codigo);
+            if (!producto) return mostrarToast('Error: Producto no encontrado.', 'error');
+            
+            const unidad = producto.esPorPeso ? 'Kg' : 'unidades';
+            const stockActual = producto.esPorPeso ? producto.stock.toFixed(3) : producto.stock;
+            
+            let cantidadStr = prompt(`Mover a Merma: "${producto.nombre}"\nStock Disponible para venta: ${stockActual} ${unidad}\n\nIngrese la cantidad a desechar en ${unidad}:`);
+            
+            if (cantidadStr === null || cantidadStr.trim() === "") return;
+            
+            let cantidad = parseFloat(cantidadStr);
+            
+            if (isNaN(cantidad) || cantidad <= 0) return mostrarToast('Cantidad inválida.', 'error');
+            
+            if (producto.esPorPeso) {
+                cantidad = parseFloat(cantidad.toFixed(3));
+            } else {
+                cantidad = Math.round(cantidad);
+            }
+
+            if (producto.stock < cantidad) {
+                return mostrarToast(`Stock insuficiente. Solo hay ${stockActual} ${unidad} disponibles para venta.`, 'error');
+            }
+
+            producto.stock -= cantidad;
+            producto.stockMerma += cantidad;
+
+            localStorage.setItem('inventarioActual', JSON.stringify(inventario));
+            renderInventario();
+            
+            mostrarToast(`Se movieron ${cantidad} ${unidad} de "${producto.nombre}" a Merma.`, 'success');
+        }
+
+        function restaurarDeMerma(codigo, fromMermaSection = false) {
+            const producto = inventario.find(p => p.codigo === codigo);
+            if (!producto) return mostrarToast('Error: Producto no encontrado.', 'error');
+            
+            const unidad = producto.esPorPeso ? 'Kg' : 'unidades';
+            const mermaActual = producto.esPorPeso ? producto.stockMerma.toFixed(3) : producto.stockMerma;
+
+            if (producto.stockMerma <= 0) {
+                return mostrarToast('No hay unidades en Merma para restaurar.', 'neutral');
+            }
+            
+            let cantidadStr = prompt(`Restaurar de Merma: "${producto.nombre}"\nStock en Merma: ${mermaActual} ${unidad}\n\nIngrese la cantidad a RESTAURAR al inventario (disponible para venta):`);
+            
+            if (cantidadStr === null || cantidadStr.trim() === "") return;
+            
+            let cantidad = parseFloat(cantidadStr);
+            
+            if (isNaN(cantidad) || cantidad <= 0) return mostrarToast('Cantidad inválida.', 'error');
+            
+            if (producto.esPorPeso) {
+                cantidad = parseFloat(cantidad.toFixed(3));
+            } else {
+                cantidad = Math.round(cantidad);
+            }
+
+            if (producto.stockMerma < cantidad) {
+                return mostrarToast(`Cantidad a restaurar excede el stock en Merma (${mermaActual} ${unidad}).`, 'error');
+            }
+
+            producto.stockMerma -= cantidad;
+            producto.stock += cantidad;
+
+            localStorage.setItem('inventarioActual', JSON.stringify(inventario));
+            
+            if (fromMermaSection) renderMermas();
+            renderInventario();
+            
+            mostrarToast(`Se restauraron ${cantidad} ${unidad} de "${producto.nombre}" al inventario.`, 'success');
+        }
+
+        // --- FUNCIONES DE CREDITOS (NUEVO) ---
+        function renderCreditos() {
+            const tbody = document.getElementById('tabla-creditos');
+            const noCreditosMsg = document.getElementById('no-creditos-msg');
+            tbody.innerHTML = '';
+
+            const ventasPendientes = registroVentas.filter(v => v.pendiente && !v.cancelada);
+
+            if (ventasPendientes.length === 0) {
+                noCreditosMsg.style.display = 'block';
+                return;
+            }
+            noCreditosMsg.style.display = 'none';
+
+            ventasPendientes.slice().reverse().forEach(venta => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-orange-50 transition';
+                tr.innerHTML = `
+                    <td class="font-bold text-gray-700">${venta.cliente}</td>
+                    <td class="text-gray-600">${venta.fecha} ${venta.hora}</td>
+                    <td class="font-bold text-red-600">$${venta.total.toFixed(2)}</td>
+                    <td>
+                        <button onclick="liquidarCredito(${venta.id})" class="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 transition text-sm font-bold">
+                            <i class="fas fa-hand-holding-usd mr-1"></i> Cobrar / Liquidar
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function liquidarCredito(idVenta) {
+            const ventaIndex = registroVentas.findIndex(v => v.id === idVenta);
+            if (ventaIndex === -1) return;
+            const venta = registroVentas[ventaIndex];
+
+            if(confirm(`¿Desea marcar como PAGADO el fiado de ${venta.cliente} por $${venta.total.toFixed(2)}?`)) {
+                venta.pendiente = false; // Ya no es pendiente
+                venta.pago = venta.total; // Asumimos pago completo
+                venta.cambio = 0;
+                
+                registroVentas[ventaIndex] = venta;
+                localStorage.setItem('historialVentas', JSON.stringify(registroVentas));
+                
+                renderCreditos();
+                renderVentas(); // Actualizar historial
+                mostrarToast(`Crédito de ${venta.cliente} liquidado.`, 'success');
+            }
+        }
+
+        // --- FUNCIONES DE GASTOS ---
+        
+        function registrarGasto() {
+            const descripcionInput = document.getElementById('gasto-descripcion');
+            const montoInput = document.getElementById('gasto-monto');
+
+            const descripcion = descripcionInput.value.trim();
+            const monto = parseFloat(montoInput.value);
+
+            if (!descripcion || isNaN(monto) || monto <= 0) {
+                mostrarToast('Por favor, ingrese una descripción y un monto válido para el gasto.', 'error');
+                return;
+            }
+            
+            if (monto > 10000) {
+                 if (!confirm(`El monto de $${monto.toFixed(2)} es muy alto. ¿Está seguro de registrar este gasto?`)) {
+                    return;
+                }
+            }
+
+
+            const now = new Date();
+            const gasto = {
+                id: contadorGastos++,
+                fecha: now.toLocaleDateString('es-MX'), // DD/MM/AAAA
+                hora: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }), // HH:MM
+                descripcion: descripcion,
+                monto: monto
+            };
+
+            registroGastos.push(gasto);
+            localStorage.setItem('historialGastos', JSON.stringify(registroGastos));
+
+            // Limpiar campos y renderizar
+            descripcionInput.value = '';
+            montoInput.value = '';
+            descripcionInput.focus();
+            renderGastos();
+            mostrarToast(`Gasto registrado: ${descripcion} por $${monto.toFixed(2)}`, 'success');
+        }
+        
+        function renderGastos() {
+            const tbody = document.getElementById('tabla-gastos');
+            const noGastosMsg = document.getElementById('no-gastos-msg');
+            tbody.innerHTML = '';
+
+            if (registroGastos.length === 0) {
+                noGastosMsg.style.display = 'block';
+                return;
+            }
+
+            noGastosMsg.style.display = 'none';
+
+            // Mostrar los gastos de la más reciente a la más antigua
+            registroGastos.slice().reverse().forEach(gasto => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-red-50 transition';
+                tr.innerHTML = `
+                    <td class="text-gray-600">${gasto.fecha} ${gasto.hora}</td>
+                    <td class="font-medium">${gasto.descripcion}</td>
+                    <td class="font-bold text-red-600">-$${gasto.monto.toFixed(2)}</td>
+                    <td>
+                        <button onclick="eliminarGasto(${gasto.id})" class="text-red-500 hover:text-red-700 hover:bg-red-50 rounded p-1 text-sm">
+                            <i class="fas fa-trash-alt"></i> Eliminar
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function eliminarGasto(idGasto) {
+            if (!confirm(`¿Estás seguro de eliminar el Gasto #${idGasto}? Esta acción es irreversible.`)) return;
+
+            const index = registroGastos.findIndex(g => g.id === idGasto);
+            if (index !== -1) {
+                const gastoEliminado = registroGastos.splice(index, 1)[0];
+                localStorage.setItem('historialGastos', JSON.stringify(registroGastos));
+                renderGastos();
+                mostrarToast(`Gasto #${idGasto} eliminado: ${gastoEliminado.descripcion}`, 'success');
+            }
+        }
+        
+        // --- FUNCIONES DE VENTAS ---
+
+        function renderVentas() {
+            const tbody = document.getElementById('tabla-ventas');
+            const noSalesMsg = document.getElementById('no-sales-msg');
+            const totalVentasSpan = document.getElementById('ventas-total-dia');
+            tbody.innerHTML = '';
+
+            if (registroVentas.length === 0) {
+                noSalesMsg.style.display = 'block';
+                totalVentasSpan.textContent = '$0.00';
+                return;
+            }
+
+            noSalesMsg.style.display = 'none';
+
+            let totalAcumulado = 0;
+            
+            // Mostrar las ventas de la más reciente a la más antigua
+            registroVentas.slice().reverse().forEach(venta => {
+                const tr = document.createElement('tr');
+                
+                if (venta.cancelada) {
+                    tr.classList.add('venta-cancelada');
+                } else if (!venta.pendiente) {
+                    // Solo sumamos al total del día si no es crédito pendiente
+                    totalAcumulado += venta.total;
+                    tr.onclick = () => mostrarDetalleModal(venta.id);
+                    tr.classList.add('hover:bg-blue-50');
+                } else {
+                     // Si es pendiente
+                    tr.onclick = () => mostrarDetalleModal(venta.id);
+                    tr.classList.add('hover:bg-orange-50', 'bg-orange-50');
+                }
+                
+                // Contar productos y agrupar para la vista
+                let totalProductos = venta.items.reduce((sum, item) => sum + (item.esPorPeso ? 1 : item.pesoVendido), 0);
+                let productosTexto = venta.items.length > 0 ? `${venta.items[0].nombre.split(' (')[0]} +${totalProductos - 1} art.` : '0 artículos';
+
+                let estadoTexto = venta.pendiente ? `<span class="text-orange-600 font-bold">PENDIENTE (${venta.cliente})</span>` : 'PAGADO';
+                if(venta.cancelada) estadoTexto = 'CANCELADA';
+
+                tr.innerHTML = `
+                    <td class="font-bold font-mono">${venta.id}</td>
+                    <td>${venta.hora} / ${venta.fecha}</td>
+                    <td>${estadoTexto}</td>
+                    <td>${productosTexto}</td>
+                    <td class="font-bold text-lg ${venta.cancelada ? 'text-red-700' : (venta.pendiente ? 'text-orange-600' : 'text-green-600')}">$${venta.total.toFixed(2)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            totalVentasSpan.textContent = `$${totalAcumulado.toFixed(2)}`;
+        }
+
+        function mostrarDetalleModal(idVenta) {
+            const venta = registroVentas.find(v => v.id === idVenta);
+            if (!venta) return;
+
+            const modal = document.getElementById('detalle-modal');
+            document.getElementById('modal-title').textContent = `Detalle de Venta #${venta.id}`;
+            document.getElementById('modal-total').textContent = `$${venta.total.toFixed(2)}`;
+            document.getElementById('modal-pago').textContent = `$${venta.pago.toFixed(2)}`;
+            document.getElementById('modal-cambio').textContent = `$${venta.cambio.toFixed(2)}`;
+            
+            const itemsList = document.getElementById('modal-items-list');
+            itemsList.innerHTML = '';
+            
+            venta.items.forEach(item => {
+                const tr = document.createElement('tr');
+                const cantidadUnidad = item.esPorPeso ? `${item.pesoVendido.toFixed(3)} Kg` : `${item.pesoVendido} Und`;
+                const precioUnitario = item.esPorPeso ? (item.precio / item.pesoVendido).toFixed(2) : item.precio.toFixed(2);
+
+                tr.innerHTML = `
+                    <td class="py-2 px-1 font-mono">${item.codigo}</td>
+                    <td class="py-2 px-1">${item.nombre} (${cantidadUnidad})</td>
+                    <td class="py-2 px-1 text-right text-green-600">$${item.precio.toFixed(2)}</td>
+                `;
+                itemsList.appendChild(tr);
+            });
+            
+            const btnDevolver = document.getElementById('btn-devolver-venta');
+            if (venta.cancelada) {
+                btnDevolver.disabled = true;
+                btnDevolver.textContent = 'Venta Cancelada Anteriormente';
+                btnDevolver.classList.remove('bg-red-500', 'hover:bg-red-600');
+                btnDevolver.classList.add('bg-gray-400', 'cursor-not-allowed');
+            } else {
+                btnDevolver.disabled = false;
+                btnDevolver.textContent = 'Devolver / Cancelar Venta';
+                btnDevolver.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                btnDevolver.classList.add('bg-red-500', 'hover:bg-red-600');
+                btnDevolver.onclick = () => devolverVenta(venta.id);
+            }
+
+            modal.classList.add('active');
+        }
+
+        function cerrarDetalleModal() {
+            document.getElementById('detalle-modal').classList.remove('active');
+        }
+
+        function devolverVenta(idVenta) {
+            if (!confirm(`¿Estás seguro de DEVOLVER/CANCELAR la Venta #${idVenta}? Se restaurará el stock y se marcará como cancelada.`)) return;
+
+            const ventaIndex = registroVentas.findIndex(v => v.id === idVenta);
+            if (ventaIndex === -1 || registroVentas[ventaIndex].cancelada) {
+                mostrarToast('Error: Venta no encontrada o ya está cancelada.', 'error');
+                return;
+            }
+
+            const venta = registroVentas[ventaIndex];
+
+            // Restaurar Stock
+            venta.items.forEach(item => {
+                const producto = inventario.find(p => p.codigo === item.codigo);
+                if (producto) {
+                    // El pesoVendido/cantidad es lo que se tiene que sumar de vuelta
+                    producto.stock += item.pesoVendido; 
+                    if (producto.esPorPeso) {
+                        producto.stock = parseFloat(producto.stock.toFixed(3));
+                    } else {
+                        producto.stock = Math.round(producto.stock);
+                    }
+                }
+            });
+
+            // Marcar como cancelada
+            venta.cancelada = true;
+            registroVentas[ventaIndex] = venta; // Asegurar que el objeto en el array se actualiza
+
+            // Guardar en localStorage
+            localStorage.setItem('inventarioActual', JSON.stringify(inventario));
+            localStorage.setItem('historialVentas', JSON.stringify(registroVentas));
+
+            // Actualizar vistas
+            cerrarDetalleModal();
+            renderVentas();
+            renderInventario(); 
+            renderCreditos(); // Actualizar créditos por si acaso
+            mostrarToast(`Venta #${idVenta} cancelada y stock restaurado.`, 'success');
+        }
+
+        function borrarHistorialSeguro() {
+            const password = prompt("Ingrese la contraseña de administrador para BORRAR PERMANENTEMENTE el Historial de Ventas:");
+            if (password === ADMIN_PASS) {
+                if (confirm("¡ADVERTENCIA! Esta acción borrará TODO el historial de ventas y es IRREVERSIBLE. ¿Continuar?")) {
+                    registroVentas = [];
+                    localStorage.removeItem('historialVentas');
+                    contadorVentas = 1; 
+                    renderVentas();
+                    renderCreditos();
+                    mostrarToast("Historial de ventas borrado permanentemente.", "success");
+                }
+            } else if (password !== null) {
+                mostrarToast("Contraseña incorrecta", "error");
+            }
+        }
+        
+        // --- FUNCIONES DE REPORTES ---
+
+        function generarReporte(periodo) {
+            const today = new Date();
+            let startDate, title;
+            // Define endDate for report boundary storage
+            const endDate = new Date(today);
+            endDate.setHours(23, 59, 59, 999);
+
+            if (periodo === 'diario') {
+                startDate = new Date(today);
+                startDate.setHours(0, 0, 0, 0);
+                title = `Reporte Diario (${today.toLocaleDateString('es-MX')})`;
+            } else if (periodo === 'semanal') {
+                const dayOfWeek = today.getDay(); // 0 = Domingo, 1 = Lunes
+                const diff = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Lunes de la semana
+                startDate = new Date(today.setDate(diff));
+                startDate.setHours(0, 0, 0, 0);
+                title = `Reporte Semanal (Desde ${startDate.toLocaleDateString('es-MX')})`;
+            } else if (periodo === 'quincenal') {
+                if (today.getDate() <= 15) {
+                    startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+                } else {
+                    startDate = new Date(today.getFullYear(), today.getMonth(), 16);
+                }
+                startDate.setHours(0, 0, 0, 0);
+                title = `Reporte Quincenal (Desde ${startDate.toLocaleDateString('es-MX')})`;
+            } else if (periodo === 'mensual') {
+                startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+                startDate.setHours(0, 0, 0, 0);
+                title = `Reporte Mensual (${today.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })})`;
+            }
+            
+            // Filtrar ventas, excluyendo canceladas
+            const ventasFiltradas = registroVentas.filter(venta => {
+                if (venta.cancelada) return false;
+                
+                // Extraer los componentes de la fecha (DD/MM/AAAA) y hora (HH:MM:SS)
+                const [day, month, year] = venta.fecha.split('/').map(Number);
+                const [hour, minute, second] = venta.hora.split(':').map(Number);
+                
+                // Crear un objeto Date con el formato AAAA-MM-DD (usando 0-indexed month)
+                const ventaDate = new Date(year, month - 1, day, hour, minute, second || 0);
+                
+                if (isNaN(ventaDate.getTime())) {
+                    console.warn(`Error al parsear la fecha de la venta #${venta.id}: ${venta.fecha} ${venta.hora}`);
+                    return false; 
+                }
+                
+                return ventaDate >= startDate;
+            });
+            
+
+            ultimoReporte = ventasFiltradas; 
+            ultimoReporteTitulo = title;
+            ultimoReporteFechaInicio = startDate.toLocaleDateString('es-MX'); 
+            ultimoReporteFechaFin = today.toLocaleDateString('es-MX'); 
+            
+
+            let totalVentas = 0;
+            const productosVendidos = {}; // { codigo: { nombre, cantidad, totalVenta } }
+
+            ventasFiltradas.forEach(venta => {
+                // Solo sumar al total monetario si NO es crédito pendiente
+                if(!venta.pendiente) {
+                    totalVentas += venta.total;
+                }
+                
+                venta.items.forEach(item => {
+                    if (!productosVendidos[item.codigo]) {
+                        productosVendidos[item.codigo] = {
+                            codigo: item.codigo,
+                            nombre: item.nombre.replace(/\s\(\d+(\.\d+)?\s(Kg|Und)\)$/, ''), // Limpiar el nombre del carrito
+                            cantidad: 0,
+                            totalVenta: 0
+                        };
+                    }
+                    productosVendidos[item.codigo].cantidad += item.pesoVendido;
+                    productosVendidos[item.codigo].totalVenta += item.precio;
+                });
+            });
+
+            // Renderizar resultados
+            document.getElementById('reporte-title').textContent = title;
+            
+            const totalDiv = document.getElementById('reporte-total');
+            totalDiv.textContent = `Ventas Totales Cobradas: $${totalVentas.toFixed(2)}`;
+            totalDiv.classList.remove('hidden');
+
+            const subtitle = document.getElementById('reporte-subtitle');
+            subtitle.textContent = `Resumen por Producto (Total de ${ventasFiltradas.length} Ventas):`;
+            subtitle.classList.remove('hidden');
+
+            const list = document.getElementById('reporte-list');
+            list.innerHTML = '';
+            
+            const productosArray = Object.values(productosVendidos).sort((a, b) => b.totalVenta - a.totalVenta); // Ordenar por más vendido
+
+            productosArray.forEach(prod => {
+                const li = document.createElement('li');
+                const productoBase = inventario.find(p => p.codigo === prod.codigo); // Buscar por código
+                const unidad = productoBase && productoBase.esPorPeso ? 'Kg' : 'Und';
+
+                li.className = 'flex justify-between border-b pb-1';
+                li.innerHTML = `
+                    <span class="text-gray-700">${prod.nombre}</span>
+                    <span class="font-medium text-right">
+                        ${prod.cantidad.toFixed(productoBase && productoBase.esPorPeso ? 3 : 0)} ${unidad} vendidas 
+                        (<span class="text-green-600 font-bold">$${prod.totalVenta.toFixed(2)}</span>)
+                    </span>
+                `;
+                list.appendChild(li);
+            });
+            
+            // Activar animación para el botón de descarga
+            document.getElementById('download-pdf-btn').classList.add('pulse-red');
+            mostrarToast(`Reporte ${periodo} generado. Total: $${totalVentas.toFixed(2)}`, 'success');
+        }
+
+        function descargarReportePDF() {
+            const title = document.getElementById('reporte-title').textContent;
+            const total = document.getElementById('reporte-total').textContent;
+            const items = document.getElementById('reporte-list').children;
+
+            if (items.length === 0 || !ultimoReporte || ultimoReporte.length === 0) {
+                return mostrarToast("Genere un reporte primero y asegúrese de que contenga ventas antes de descargar el PDF.", "error");
+            }
+            
+            const ventasReporte = ultimoReporte; 
+
+            // ** 1. Filtrar Gastos del Período **
+            const startDateStr = ultimoReporteFechaInicio; 
+            const [startDay, startMonth, startYear] = startDateStr.split('/').map(Number);
+            const reportStartDate = new Date(startYear, startMonth - 1, startDay);
+            reportStartDate.setHours(0, 0, 0, 0);
+
+            const gastosFiltrados = registroGastos.filter(gasto => {
+                const [gDay, gMonth, gYear] = gasto.fecha.split('/').map(Number);
+                const gastoDate = new Date(gYear, gMonth - 1, gDay);
+                gastoDate.setHours(0, 0, 0, 0); 
+
+                return gastoDate >= reportStartDate;
+            });
+
+            let totalGastosReporte = gastosFiltrados.reduce((sum, g) => sum + g.monto, 0);
+            
+            // Separar ventas cobradas de pendientes
+            const ventasCobradas = ventasReporte.filter(v => !v.pendiente);
+            const ventasPendientes = ventasReporte.filter(v => v.pendiente);
+
+            const totalVentasReporte = ventasCobradas.reduce((sum, v) => sum + v.total, 0);
+            const totalCreditoPendiente = ventasPendientes.reduce((sum, v) => sum + v.total, 0);
+
+            const gananciaNeta = totalVentasReporte - totalGastosReporte;
+            
+            let totalPagadoReporte = 0;
+            let totalCambioReporte = 0;
+            ventasCobradas.forEach(v => {
+                totalPagadoReporte += v.pago;
+                totalCambioReporte += v.cambio;
+            });
+            
+            // ** 2. Obtener Productos en Merma Actualmente **
+            const productosMerma = inventario.filter(p => p.stockMerma > 0);
+            let totalMermaValor = productosMerma.reduce((sum, p) => sum + (p.stockMerma * p.precio), 0);
+
+            // ** 3. Estructura y Estilos del PDF **
+            const reportContent = [];
+            const styles = {
+                header: { fontSize: 22, bold: true, margin: [0, 0, 0, 10], color: '#1f2937' },
+                subheader: { fontSize: 16, bold: true, margin: [0, 10, 0, 5], color: '#4b5563' },
+                total: { fontSize: 18, bold: true, margin: [0, 10, 0, 10], color: '#059669' },
+                item: { margin: [0, 2, 0, 2] },
+                totalGlobal: { fontSize: 14, bold: true, margin: [0, 10, 0, 0], alignment: 'right' }
+            };
+
+            // 4. Título y Fecha
+            reportContent.push({ text: `REPORTE DE VENTAS Y GASTOS - Mi Tiendita`, style: 'header' });
+            reportContent.push({ text: ultimoReporteTitulo, style: 'subheader' });
+            reportContent.push({ text: `Período: ${ultimoReporteFechaInicio} al ${ultimoReporteFechaFin}`, margin: [0, 0, 0, 5] });
+            reportContent.push({ text: `Generado el: ${new Date().toLocaleDateString('es-MX')} a las ${new Date().toLocaleTimeString('es-MX')}`, margin: [0, 0, 0, 15] });
+
+            // 5. Resumen Total y Ganancia Neta
+            reportContent.push({ text: `Ventas Totales Cobradas: $${totalVentasReporte.toFixed(2)}`, style: 'total', alignment: 'left' });
+            reportContent.push({ text: '---------------------------------------------------', alignment: 'right', margin: [0, 5, 0, 5]});
+            reportContent.push({ text: `GANANCIA NETA ESTIMADA (Efectivo - Gastos): $${gananciaNeta.toFixed(2)}`, style: 'header', alignment: 'right', color: (gananciaNeta >= 0 ? '#059669' : '#b91c1c') });
+            reportContent.push({ text: '---------------------------------------------------', alignment: 'right', margin: [0, 5, 0, 15]});
+
+            // 6. Cuadro de Gastos
+            reportContent.push({ text: 'Cuadro de Gastos del Período:', style: 'subheader', margin: [0, 10, 0, 5] });
+
+            const expensesTableBody = gastosFiltrados.map(g => [
+                { text: g.fecha, fontSize: 10 },
+                { text: g.descripcion, fontSize: 10 },
+                { text: `-$${g.monto.toFixed(2)}`, color: '#b91c1c', bold: true, alignment: 'right' }
+            ]);
+
+            if (expensesTableBody.length > 0) {
+                reportContent.push({
+                    table: {
+                        widths: [70, '*', 70],
+                        body: [
+                            [{ text: 'Fecha', bold: true, fillColor: '#fee2e2' }, { text: 'Descripción', bold: true, fillColor: '#fee2e2' }, { text: 'Monto (-)', alignment: 'right', bold: true, fillColor: '#fee2e2' }],
+                            ...expensesTableBody
+                        ]
+                    },
+                    layout: 'lightHorizontalLines',
+                    margin: [0, 5, 0, 10]
+                });
+            } else {
+                reportContent.push({ text: 'No hay gastos registrados en el período del reporte.', margin: [0, 10, 0, 10] });
+            }
+            reportContent.push({ text: `TOTAL GASTOS del Período: -$${totalGastosReporte.toFixed(2)}`, style: 'totalGlobal', color: '#b91c1c' });
+
+             // ----------------------------------------------------
+            // NUEVA SECCIÓN DE CRÉDITO (FIADO)
+            // ----------------------------------------------------
+            reportContent.push({ text: 'Créditos / Fiados Pendientes del Período:', style: 'subheader', margin: [0, 20, 0, 5], color: '#d97706' }); 
+
+            if (ventasPendientes.length > 0) {
+                const creditosBody = ventasPendientes.map(v => [
+                    { text: v.cliente, fontSize: 10 },
+                    { text: `${v.fecha} ${v.hora}`, fontSize: 10 },
+                    { text: `$${v.total.toFixed(2)}`, bold: true, alignment: 'right', color: '#d97706' }
+                ]);
+
+                reportContent.push({
+                    table: {
+                        widths: ['*', 'auto', 80],
+                        body: [
+                            [{ text: 'Cliente', bold: true, fillColor: '#ffedd5' }, { text: 'Fecha', bold: true, fillColor: '#ffedd5' }, { text: 'Monto Pendiente', alignment: 'right', bold: true, fillColor: '#ffedd5' }],
+                            ...creditosBody
+                        ]
+                    },
+                    layout: 'lightHorizontalLines',
+                    margin: [0, 5, 0, 10]
+                });
+                reportContent.push({ text: `TOTAL PENDIENTE DE COBRO: $${totalCreditoPendiente.toFixed(2)}`, style: 'totalGlobal', color: '#d97706' });
+            } else {
+                reportContent.push({ text: 'No hay créditos pendientes registrados en este período.', margin: [0, 0, 0, 10] });
+            }
+            // ----------------------------------------------------
+
+            // 7. Sección de Mermas
+            reportContent.push({ text: 'Inventario en Merma (Desecho) Actual:', style: 'subheader', margin: [0, 20, 0, 5] });
+            
+            const mermaTableBody = productosMerma.map(p => {
+                const unidad = p.esPorPeso ? 'Kg' : 'Ud';
+                const mermaStock = p.esPorPeso ? p.stockMerma.toFixed(3) : p.stockMerma;
+                const valor = p.stockMerma * p.precio;
+                return [
+                    { text: p.codigo, fontSize: 10 },
+                    { text: p.nombre, fontSize: 10 },
+                    { text: `${mermaStock} ${unidad}`, alignment: 'center', fontSize: 10 },
+                    { text: `$${valor.toFixed(2)}`, color: '#cc4a4a', bold: true, alignment: 'right' }
+                ];
+            });
+            
+            if (mermaTableBody.length > 0) {
+                reportContent.push({
+                    table: {
+                        widths: [40, '*', 70, 70],
+                        body: [
+                            [{ text: 'Código', bold: true, fillColor: '#ffe4e6' }, { text: 'Producto', bold: true, fillColor: '#ffe4e6' }, { text: 'Cantidad', alignment: 'center', bold: true, fillColor: '#ffe4e6' }, { text: 'Valor Estimado', alignment: 'right', bold: true, fillColor: '#ffe4e6' }],
+                            ...mermaTableBody
+                        ]
+                    },
+                    layout: 'lightHorizontalLines',
+                    margin: [0, 5, 0, 10]
+                });
+            } else {
+                reportContent.push({ text: 'No hay productos actualmente en Merma.', margin: [0, 10, 0, 10] });
+            }
+            reportContent.push({ text: `VALOR TOTAL en Merma: $${totalMermaValor.toFixed(2)}`, style: 'totalGlobal', color: '#cc4a4a' });
+
+
+            // 8. Resumen por Producto
+            reportContent.push({ text: 'Desglose por Producto Vendido:', style: 'subheader', margin: [0, 20, 0, 5] });
+
+            const productList = [];
+            for (let i = 0; i < items.length; i++) {
+                const innerHTML = items[i].innerHTML;
+                const nameMatch = innerHTML.match(/<span class="text-gray-700">(.*?)<\/span>/);
+                const detailsMatch = innerHTML.match(/<span class="font-medium text-right">\s*(.*?)\s*\(<span class="text-green-600 font-bold">(.*?)<\/span>\)\s*<\/span>/s);
+
+                if (nameMatch && detailsMatch) {
+                    const name = nameMatch[1].trim();
+                    const details = detailsMatch[1].replace(/<[^>]*>?/gm, '').trim(); 
+                    const totalItem = detailsMatch[2].trim();
+
+                    productList.push([
+                        { text: name, style: 'item' },
+                        { text: `${details} (${totalItem})`, style: 'item', alignment: 'right' }
+                    ]);
+                }
+            }
+
+            if (productList.length > 0) {
+                reportContent.push({
+                    table: {
+                        widths: ['*', 150],
+                        body: [
+                            [{ text: 'Producto', bold: true, fillColor: '#f3f4f6' }, { text: 'Cantidad / Venta Total', alignment: 'right', bold: true, fillColor: '#f3f4f6' }],
+                            ...productList
+                        ]
+                    },
+                    layout: 'lightHorizontalLines',
+                    margin: [0, 5, 0, 20]
+                });
+            } else {
+                reportContent.push({ text: 'No hay datos de productos vendidos en este reporte.', margin: [0, 10, 0, 10] });
+            }
+            
+            // 9. Listado Detallado de Ventas
+            reportContent.push({ text: 'Listado Detallado de Ventas:', style: 'subheader', margin: [0, 20, 0, 5] });
+
+            const salesDetailBody = ventasReporte.map(v => {
+                let itemsText = v.items.map(item => {
+                    const unidad = item.esPorPeso ? 'Kg' : 'Und';
+                    const cantidad = item.esPorPeso ? item.pesoVendido.toFixed(3) : item.pesoVendido;
+                    const nombreSimple = item.nombre.replace(/\s\(\d+(\.\d+)?\s(Kg|Und)\)$/, '');
+                    
+                    return `(${cantidad} ${unidad}) ${nombreSimple} - $${item.precio.toFixed(2)}`;
+                }).join('\n');
+
+                let estado = v.pendiente ? '(CRÉDITO)' : '';
+                let colorTotal = v.pendiente ? '#ea580c' : '#059669'; // Naranja para credito, verde pago
+                
+                return [
+                    { text: `#${v.id}`, bold: true, alignment: 'center', fillColor: '#f3f4f6', margin: [0,2] },
+                    { text: `${v.fecha} ${v.hora}\n${estado}`, fillColor: '#f3f4f6', margin: [0,2], fontSize: 9 },
+                    { text: itemsText, fontSize: 9, margin: [0,2] },
+                    { text: `$${v.total.toFixed(2)}`, bold: true, color: colorTotal, alignment: 'right', fillColor: '#f3f4f6', margin: [0,2] }
+                ];
+            });
+
+            if (salesDetailBody.length > 0) {
+                reportContent.push({
+                    table: {
+                        widths: [40, 90, '*', 70],
+                        body: [
+                            [{ text: '#Venta', bold: true, alignment: 'center' }, { text: 'Fecha/Hora', bold: true }, { text: 'Productos (Detalle)', bold: true }, { text: 'Total', bold: true, alignment: 'right' }],
+                            ...salesDetailBody
+                        ]
+                    },
+                    layout: 'headerLineOnly',
+                    margin: [0, 5, 0, 20]
+                });
+            } else {
+                reportContent.push({ text: 'No hay ventas detalladas en este reporte.', margin: [0, 10, 0, 10] });
+            }
+            
+            
+            // 10. Resumen Financiero Adicional
+            reportContent.push({ text: 'Detalle de Movimiento de Caja (Efectivo):', style: 'subheader', margin: [0, 20, 0, 5] });
+            reportContent.push({ text: `Monto Total Recibido (Dinero en caja): $${totalPagadoReporte.toFixed(2)}`, style: 'totalGlobal', margin: [0, 15, 0, 0] });
+            reportContent.push({ text: `Cambio Total Devuelto en el período: $${totalCambioReporte.toFixed(2)}`, style: 'totalGlobal', color: '#16a34a' });
+            
+            const docDefinition = {
+                content: reportContent,
+                styles: styles
+            };
+            
+            pdfMake.vfs = pdfMake.vfs || window.pdfMake.vfs;
+            pdfMake.createPdf(docDefinition).download(`${ultimoReporteTitulo}.pdf`);
+            mostrarToast("PDF generado y descargado.", "success");
+        }
+
+
+        // --- FUNCIONES DE REPORTE GLOBAL (NUEVAS) ---
+
+        function descargarReporteGlobal() {
+            if (registroVentas.length === 0 && registroGastos.length === 0) {
+                 return mostrarToast("No hay datos de ventas ni gastos para generar un Reporte GLOBAL.", "error");
+            }
+
+            // 1. CÁLCULOS GLOBALES
+            const totalVentasGlobal = registroVentas.filter(v => !v.cancelada && !v.pendiente).reduce((sum, v) => sum + v.total, 0);
+            const totalGastosGlobal = registroGastos.reduce((sum, g) => sum + g.monto, 0);
+            const gananciaNetaGlobal = totalVentasGlobal - totalGastosGlobal;
+            const totalMermaValor = inventario.reduce((sum, p) => sum + (p.stockMerma * p.precio), 0);
+            const totalItemsVendidos = registroVentas.filter(v => !v.cancelada && !v.pendiente).reduce((sum, v) => sum + v.items.length, 0);
+            
+            // 2. CONTEO DE PRODUCTOS VENDIDOS para Top 5
+            const productosVendidosGlobal = {};
+            registroVentas.filter(v => !v.cancelada && !v.pendiente).forEach(venta => {
+                venta.items.forEach(item => {
+                    if (!productosVendidosGlobal[item.codigo]) {
+                        productosVendidosGlobal[item.codigo] = {
+                            codigo: item.codigo,
+                            nombre: item.nombre.replace(/\s\(\d+(\.\d+)?\s(Kg|Und)\)$/, ''),
+                            cantidadVendida: 0,
+                            totalVenta: 0
+                        };
+                    }
+                    productosVendidosGlobal[item.codigo].cantidadVendida += item.pesoVendido;
+                    productosVendidosGlobal[item.codigo].totalVenta += item.precio;
+                });
+            });
+
+            const topProductosArray = Object.values(productosVendidosGlobal)
+                .sort((a, b) => b.totalVenta - a.totalVenta) // Ordenar por total de ventas
+                .slice(0, 5);
+                
+            // 3. Obtener Merma Actual
+            const productosMerma = inventario.filter(p => p.stockMerma > 0);
+
+
+            // 4. ESTRUCTURA Y ESTILOS DEL PDF
+            const reportContent = [];
+            const styles = {
+                header: { fontSize: 24, bold: true, margin: [0, 0, 0, 10], color: '#4b0082' },
+                subheader: { fontSize: 16, bold: true, margin: [0, 15, 0, 5], color: '#4b5563' },
+                total: { fontSize: 20, bold: true, margin: [0, 10, 0, 10], color: '#059669' },
+                neto: { fontSize: 26, bold: true, margin: [0, 5, 0, 20], color: '#059669', alignment: 'right' },
+                observation: { margin: [0, 5, 0, 5], color: '#1f2937' },
+                tableHeader: { bold: true, fillColor: '#e0e7ff', alignment: 'center' }
+            };
+
+            // 5. Título y Resumen Global
+            reportContent.push({ text: `REPORTE GLOBAL DE ACTIVIDAD - Mi Tiendita`, style: 'header' });
+            reportContent.push({ text: `Análisis Histórico hasta el: ${new Date().toLocaleDateString('es-MX')}`, margin: [0, 0, 0, 15] });
+
+            reportContent.push({ 
+                text: `Resumen de Métricas Clave`, 
+                style: 'subheader', 
+                color: '#4b0082',
+                decoration: 'underline' 
+            });
+
+            reportContent.push({
+                columns: [
+                    { text: `Ventas Totales Registradas:`, alignment: 'left', fontSize: 14, margin: [0, 5] },
+                    { text: `$${totalVentasGlobal.toFixed(2)}`, alignment: 'right', fontSize: 14, bold: true, color: '#059669', margin: [0, 5] }
+                ]
+            });
+             reportContent.push({
+                columns: [
+                    { text: `Gastos Totales Registrados:`, alignment: 'left', fontSize: 14, margin: [0, 5] },
+                    { text: `-$${totalGastosGlobal.toFixed(2)}`, alignment: 'right', fontSize: 14, bold: true, color: '#b91c1c', margin: [0, 5] }
+                ]
+            });
+            reportContent.push({
+                columns: [
+                    { text: `Valor Total Actual en Merma:`, alignment: 'left', fontSize: 14, margin: [0, 5] },
+                    { text: `$${totalMermaValor.toFixed(2)}`, alignment: 'right', fontSize: 14, bold: true, color: '#cc4a4a', margin: [0, 5] }
+                ]
+            });
+            
+            reportContent.push({ text: '---------------------------------------------------', alignment: 'right', margin: [0, 5, 0, 5]});
+            reportContent.push({ text: `GANANCIA NETA GLOBAL: $${gananciaNetaGlobal.toFixed(2)}`, style: 'neto', color: (gananciaNetaGlobal >= 0 ? '#059669' : '#b91c1c') });
+            reportContent.push({ text: `Total de tickets/transacciones: ${registroVentas.length} | Items vendidos: ${totalItemsVendidos}`, alignment: 'right', fontSize: 12, margin: [0, 0, 0, 20] });
+
+
+            // 6. Resumen "Gráfico" (Top 5 Productos)
+            reportContent.push({ text: 'Análisis de Ventas (Top 5 Productos por Ingreso):', style: 'subheader', color: '#4b0082' });
+
+            if (topProductosArray.length > 0) {
+                const topTableBody = topProductosArray.map((p, index) => {
+                    const productoBase = inventario.find(invP => invP.codigo === p.codigo);
+                    const unidad = productoBase && productoBase.esPorPeso ? 'Kg' : 'Und';
+                    
+                    return [
+                        { text: `${index + 1}.`, alignment: 'center', fontSize: 10 },
+                        { text: p.nombre, fontSize: 10 },
+                        { text: `${p.cantidadVendida.toFixed(productoBase && productoBase.esPorPeso ? 3 : 0)} ${unidad}`, alignment: 'right', fontSize: 10 },
+                        { text: `$${p.totalVenta.toFixed(2)}`, bold: true, color: '#059669', alignment: 'right', fontSize: 12 }
+                    ];
+                });
+
+                reportContent.push({
+                    table: {
+                        widths: [20, '*', 100, 80],
+                        body: [
+                            [{ text: '#', style: 'tableHeader' }, { text: 'Producto', style: 'tableHeader' }, { text: 'Cantidad Vendida', alignment: 'center', style: 'tableHeader' }, { text: 'Ingreso Total', alignment: 'right', style: 'tableHeader' }],
+                            ...topTableBody
+                        ]
+                    },
+                    layout: 'lightHorizontalLines',
+                    margin: [0, 5, 0, 20]
+                });
+            } else {
+                reportContent.push({ text: 'No hay productos vendidos en el historial para generar el Top 5.', margin: [0, 5, 0, 20] });
+            }
+
+            // 7. Observaciones y Análisis
+            reportContent.push({ text: 'Observaciones y Análisis (Recomendaciones del Sistema):', style: 'subheader', color: '#4b0082' });
+            
+            const obsText = [];
+            
+            // Obs 1: Ganancia Neta
+            if (gananciaNetaGlobal > 0) {
+                obsText.push({ text: `- Análisis Financiero: La Ganancia Neta GLOBAL es positiva ($${gananciaNetaGlobal.toFixed(2)}), lo que indica una buena salud económica general del negocio.`, style: 'observation' });
+            } else {
+                 obsText.push({ text: `- Análisis Financiero: La Ganancia Neta GLOBAL es negativa ($${gananciaNetaGlobal.toFixed(2)}). Se recomienda revisar gastos y costos de producto.`, style: 'observation', color: '#b91c1c' });
+            }
+            
+            // Obs 2: Gastos
+            if (totalGastosGlobal > totalVentasGlobal * 0.20 && totalVentasGlobal > 0) {
+                 obsText.push({ text: `- Gestión de Gastos: El total de gastos ($${totalGastosGlobal.toFixed(2)}) es elevado en relación a las ventas. Considere optimizar los costos operacionales.`, style: 'observation', color: '#b91c1c' });
+            } else if (registroGastos.length > 0) {
+                 obsText.push({ text: `- Gestión de Gastos: Los gastos se mantienen bajo control. Es importante seguir registrando cada egreso.`, style: 'observation', color: '#059669' });
+            } else {
+                obsText.push({ text: `- Gestión de Gastos: No hay gastos registrados. Asegúrese de ingresar gastos como luz, renta y sueldos para un cálculo de Ganancia Neta preciso.`, style: 'observation' });
+            }
+
+            // Obs 3: Merma
+            if (totalMermaValor > 0) {
+                 obsText.push({ text: `- Control de Inventario/Merma: El valor actual de los productos desechados es de $${totalMermaValor.toFixed(2)}. Implementar mejores prácticas de manejo de inventario podría reducir esta pérdida.`, style: 'observation', color: '#cc4a4a' });
+            } else {
+                 obsText.push({ text: `- Control de Inventario/Merma: Excelente. No hay productos actualmente en Merma.`, style: 'observation', color: '#059669' });
+            }
+
+
+            reportContent.push({
+                ul: obsText
+            });
+
+            reportContent.push({ text: '--- FIN DEL REPORTE GLOBAL ---', alignment: 'center', margin: [0, 30, 0, 0], color: '#4b5563' });
+
+
+            // 8. Generar PDF
+            const docDefinition = {
+                content: reportContent,
+                styles: styles
+            };
+            
+            pdfMake.vfs = pdfMake.vfs || window.pdfMake.vfs;
+            pdfMake.createPdf(docDefinition).download(`Reporte_GLOBAL_${new Date().toLocaleDateString('es-MX').replace(/\//g, '-')}.pdf`);
+            mostrarToast("PDF Global generado y descargado.", "success");
+        }
+
+
+        // --- FUNCIONES DE CRUD (Actualizadas para eliminarProducto) ---
+
+        function abrirCRUDModal(mode, codigo = null) {
+            const modal = document.getElementById('crud-modal');
+            const title = document.getElementById('crud-modal-title');
+            const codigoInput = document.getElementById('crud-codigo');
+            const nombreInput = document.getElementById('crud-nombre');
+            const precioInput = document.getElementById('crud-precio');
+            const stockInput = document.getElementById('crud-stock');
+            const esPorPesoCheckbox = document.getElementById('crud-esPorPeso');
+            const saveBtn = document.getElementById('crud-save-btn');
+            const originalCodigoInput = document.getElementById('crud-original-codigo');
+            
+            nombreInput.value = '';
+            precioInput.value = '';
+            stockInput.value = '';
+            esPorPesoCheckbox.checked = false;
+            document.getElementById('codigo-feedback').textContent = '';
+
+            if (mode === 'new') {
+                title.textContent = 'Agregar Nuevo Producto';
+                saveBtn.textContent = 'Crear Producto';
+                codigoInput.disabled = false;
+                codigoInput.value = '';
+                originalCodigoInput.value = '';
+                codigoInput.focus();
+            } else { 
+                const producto = inventario.find(p => p.codigo === codigo);
+                if (!producto) return mostrarToast('Producto no encontrado para edición.', 'error');
+
+                title.textContent = `Editar Producto: ${producto.nombre}`;
+                saveBtn.textContent = 'Guardar Cambios';
+
+                codigoInput.disabled = true;
+                codigoInput.value = producto.codigo;
+                originalCodigoInput.value = producto.codigo; 
+
+                nombreInput.value = producto.nombre;
+                precioInput.value = producto.precio;
+                stockInput.value = producto.stock;
+                esPorPesoCheckbox.checked = producto.esPorPeso || false;
+            }
+
+            modal.classList.add('active');
+        }
+
+        function guardarProducto() {
+            const originalCodigo = document.getElementById('crud-original-codigo').value.trim();
+            const codigo = document.getElementById('crud-codigo').value.trim();
+            const nombre = document.getElementById('crud-nombre').value.trim();
+            const precio = parseFloat(document.getElementById('crud-precio').value);
+            let stock = parseFloat(document.getElementById('crud-stock').value);
+            const esPorPeso = document.getElementById('crud-esPorPeso').checked;
+
+            if (esPorPeso) {
+                stock = parseFloat(stock.toFixed(3)); 
+            } else {
+                stock = Math.round(stock);
+            }
+            
+            if (codigo.length !== 3) {
+                document.getElementById('codigo-feedback').textContent = `El código debe ser de 3 dígitos.`;
+                return mostrarToast('El código debe ser de 3 dígitos.', 'error');
+            }
+
+            const productoExistenteIndex = inventario.findIndex(p => p.codigo === originalCodigo);
+
+            if (productoExistenteIndex === -1 && originalCodigo === "") {
+                if (inventario.some(p => p.codigo === codigo)) {
+                    document.getElementById('codigo-feedback').textContent = `El código ${codigo} ya existe.`;
+                    return mostrarToast(`El código ${codigo} ya existe.`, 'error');
+                }
+                
+                const nuevoProducto = {
+                    codigo: codigo,
+                    nombre: nombre,
+                    precio: precio,
+                    stock: stock,
+                    esPorPeso: esPorPeso,
+                    stockMerma: 0 // Inicializar stockMerma
+                };
+                inventario.push(nuevoProducto);
+                inventario.sort((a, b) => parseInt(a.codigo) - parseInt(b.codigo)); 
+                mostrarToast(`Producto "${nombre}" creado con código ${codigo}.`, 'success');
+            } 
+            else if (productoExistenteIndex !== -1) {
+                inventario[productoExistenteIndex].nombre = nombre;
+                inventario[productoExistenteIndex].precio = precio;
+                inventario[productoExistenteIndex].stock = stock;
+                inventario[productoExistenteIndex].esPorPeso = esPorPeso;
+                mostrarToast(`Producto "${nombre}" actualizado.`, 'success');
+            }
+
+            localStorage.setItem('inventarioActual', JSON.stringify(inventario));
+            document.getElementById('crud-modal').classList.remove('active');
+            renderInventario();
+            renderMermas(); 
+        }
+
+        function eliminarProducto(codigo) {
+            const productoIndex = inventario.findIndex(p => p.codigo === codigo);
+            const producto = inventario[productoIndex];
+
+            if (!producto) return mostrarToast('Error: Producto no encontrado.', 'error');
+            if (producto.stockMerma > 0) {
+                return mostrarToast(`No se puede eliminar "${producto.nombre}". Primero debe restaurar o borrar las ${producto.stockMerma} unidades en Merma.`, 'error');
+            }
+
+            if (confirm(`¿Estás seguro de eliminar el producto "${producto.nombre}" (${producto.codigo})? Esta acción es irreversible.`)) {
+                inventario.splice(productoIndex, 1);
+                localStorage.setItem('inventarioActual', JSON.stringify(inventario));
+                renderInventario();
+                mostrarToast(`Producto "${producto.nombre}" eliminado.`, 'success');
+            }
+        }
+        
+        // --- UTILIDADES ---
+
+        function mostrarToast(mensaje, tipo) {
+            const toast = document.getElementById('toast');
+            toast.textContent = mensaje;
+            
+            toast.style.transform = 'translateY(0)';
+
+            if(tipo === 'error') toast.className = "fixed bottom-5 right-5 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all duration-300";
+            else if(tipo === 'success') toast.className = "fixed bottom-5 right-5 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all duration-300";
+            else toast.className = "fixed bottom-5 right-5 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all duration-300";
+            
+            setTimeout(() => {
+                toast.style.transform = 'translateY(100px)';
+            }, 3000);
+        }
+
+    </script>
+
+</body>
+</html>
