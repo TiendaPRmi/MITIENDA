@@ -154,7 +154,7 @@
                         <p class="text-xs text-gray-500 mt-2">Presiona Enter para agregar el producto si está seleccionado.</p>
                     </div>
 
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 overflow-hidden flex flex-col h-96">
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 overflow-hidden flex flex-col h-[60vh]">
                         <div class="p-4 border-b bg-gray-50">
                             <h2 class="font-bold text-gray-700">Productos en Caja</h2>
                         </div>
@@ -180,7 +180,7 @@
                 </div>
 
                 <div class="md:col-span-1">
-                    <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 flex flex-col justify-between h-full">
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 flex flex-col justify-between sticky top-24">
                         <div>
                             <h2 class="text-xl font-bold text-gray-800 mb-4">Resumen de Venta</h2>
                             <div class="flex justify-between items-center mb-2 text-gray-600">
@@ -1727,7 +1727,7 @@
             const productosVendidos = {}; // { codigo: { nombre, cantidad, totalVenta } }
 
             ventasFiltradas.forEach(venta => {
-                // Solo sumar al total monetario si NO es crédito pendiente
+                // Solo sumar al total del día si no es crédito pendiente
                 if(!venta.pendiente) {
                     totalVentas += venta.total;
                 }
